@@ -45,7 +45,7 @@ class DbusTeslaAPIService:
     self._dbusservice.add_path('/Connected', 1)
 
     self._dbusservice.add_path('/Latency', None)
-    self._dbusservice.add_path('/FirmwareVersion', self._getTeslaAPIFWVersion())
+    self._dbusservice.add_path('/FirmwareVersion', self._getTeslaAPIVersion())
     self._dbusservice.add_path('/HardwareVersion', 0)
     self._dbusservice.add_path('/Position', int(config['DEFAULT']['Position']))
     self._dbusservice.add_path('/Serial', self._getTeslaAPISerial())
@@ -62,10 +62,12 @@ class DbusTeslaAPIService:
     self._runningSeconds = 0
 
     self.startDate = datetime.now()
+    self.lastCheck = datetime(2023, 12, 8)
     self.running = False
+    self.carData = {}
 
     # add _update function 'timer'
-    gobject.timeout_add(60000, self._update) # pause 250ms before the next request
+    gobject.timeout_add(500, self._update) # pause 250ms before the next request
 
     # add _signOfLife 'timer' to get feedback in log every 5minutes
     gobject.timeout_add(self._getSignOfLifeInterval()*60*1000, self._signOfLife)
@@ -76,7 +78,6 @@ class DbusTeslaAPIService:
     config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
     return config;
 
-
   def _getSignOfLifeInterval(self):
     config = self._getConfig()
     value = config['DEFAULT']['SignOfLifeLog']
@@ -86,6 +87,19 @@ class DbusTeslaAPIService:
 
     return int(value)
 
+  def _getTeslaAPISerial(self):
+    car_data = self._getTeslaAPIData()
+    vin = car_data['response']['vin']
+    if not vin:
+        vin = 0
+    return str(vin)
+
+  def _getTeslaAPIVersion(self):
+    car_data = self._getTeslaAPIData()
+    version = car_data['response']['vehicle_state']['car_version']
+    if not version:
+        version = 0
+    return str(version)
 
   def _getTeslaAPIStatusUrl(self):
     config = self._getConfig()
@@ -102,20 +116,21 @@ class DbusTeslaAPIService:
         'Authorization': f'Bearer {token}'
     }
 
-    carData = requests.get(url = URL, headers=headers)
+    checkDiff = datetime.now() - self.lastCheck
+    checkSecs = checkDiff.total_seconds()
 
-    # check for response
-    if not carData:
-        raise ConnectionError("No response from TeslaAPI - %s" % (URL))
-
-    carData = carData.json()
+    if checkSecs > 10:
+       self.carData = requests.get(url = URL, headers=headers)
+       # check for response
+       if not self.carData:
+          raise ConnectionError("No response from TeslaAPI - %s" % (URL))
+       self.carData = self.carData.json()
 
     # check for Json
-    if not carData:
+    if not self.carData:
         raise ValueError("Converting response to JSON failed")
-
-
-    return carData
+    
+    return self.carData
 
 
   def _signOfLife(self):
@@ -160,6 +175,7 @@ class DbusTeslaAPIService:
                  self._dbusservice['/Status'] = 1
               else:
                  self._dbusservice['/Status'] = 0
+                 self._dbusservice['/ChargingTime'] = 0
            else:
               self._dbusservice['/Status'] = 2
               charging = True
