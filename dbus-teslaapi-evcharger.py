@@ -18,9 +18,9 @@ import configparser # for config/ini file
 # our own packages from victron
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), '/opt/victronenergy/dbus-systemcalc-py/ext/velib_python'))
 from vedbus import VeDbusService
+from datetime import datetime
 
-
-class DbusShelly1pmService:
+class DbusTeslaAPIService:
   def __init__(self, servicename, paths, productname='Tesla API', connection='Tesla API HTTP JSON service'):
     config = self._getConfig()
     deviceinstance = int(config['DEFAULT']['Deviceinstance'])
@@ -45,10 +45,10 @@ class DbusShelly1pmService:
     self._dbusservice.add_path('/Connected', 1)
 
     self._dbusservice.add_path('/Latency', None)
-    self._dbusservice.add_path('/FirmwareVersion', self._getShellyFWVersion())
+    self._dbusservice.add_path('/FirmwareVersion', self._getTeslaAPIFWVersion())
     self._dbusservice.add_path('/HardwareVersion', 0)
     self._dbusservice.add_path('/Position', int(config['DEFAULT']['Position']))
-    self._dbusservice.add_path('/Serial', self._getShellySerial())
+    self._dbusservice.add_path('/Serial', self._getTeslaAPISerial())
     self._dbusservice.add_path('/UpdateIndex', 0)
     #self._dbusservice.add_path('/State', 0)  # Dummy path so VRM detects us as a inverter.
 
@@ -59,15 +59,19 @@ class DbusShelly1pmService:
 
     # last update
     self._lastUpdate = 0
+    self._runningSeconds = 0
+
+    self.startDate = datetime.now()
+    self.running = False
 
     # add _update function 'timer'
-    gobject.timeout_add(250, self._update) # pause 250ms before the next request
+    gobject.timeout_add(10000, self._update) # pause 250ms before the next request
 
     # add _signOfLife 'timer' to get feedback in log every 5minutes
     gobject.timeout_add(self._getSignOfLifeInterval()*60*1000, self._signOfLife)
 
-  def _getShellySerial(self):
-    #meter_data = self._getShellyData()
+  def _getTeslaAPISerial(self):
+    #meter_data = self._getTeslaAPIData()
 
     #if not meter_data['mac']:
     #    raise ValueError("Response does not contain 'mac' attribute")
@@ -76,8 +80,8 @@ class DbusShelly1pmService:
     serial = '000000000'
     return serial
 
-  def _getShellyFWVersion(self):
-    #meter_data = self._getShellyData()
+  def _getTeslaAPIFWVersion(self):
+    #meter_data = self._getTeslaAPIData()
 
     #if not meter_data['update']['old_version']:
     #    raise ValueError("Response does not contain 'update/old_version' attribute")
@@ -102,35 +106,35 @@ class DbusShelly1pmService:
     return int(value)
 
 
-  def _getShellyStatusUrl(self):
+  def _getTeslaAPIStatusUrl(self):
     config = self._getConfig()
-    accessType = config['DEFAULT']['AccessType']
-
-    if accessType == 'OnPremise': 
-        URL = "http://%s:%s@%s/status" % (config['ONPREMISE']['Username'], config['ONPREMISE']['Password'], config['ONPREMISE']['Host'])
-        URL = URL.replace(":@", "")
-    else:
-        raise ValueError("AccessType %s is not supported" % (config['DEFAULT']['AccessType']))
-
+    URL = "https://owner-api.teslamotors.com/api/1/vehicles/%s/vehicle_data" % (config['DEFAULT']['VehicleId'])
     return URL
 
 
-  def _getShellyData(self):
-    URL = self._getShellyStatusUrl()
-    meter_r = requests.get(url = URL)
+  def _getTeslaAPIData(self):
+    config = self._getConfig()
+    URL = self._getTeslaAPIStatusUrl()
+    token = config['DEFAULT']['Token']
+
+    headers = {
+        'Authorization': f'Bearer {token}'
+    }
+
+    carData = requests.get(url = URL, headers=headers)
 
     # check for response
-    if not meter_r:
-        raise ConnectionError("No response from Shelly Plug - %s" % (URL))
+    if not carData:
+        raise ConnectionError("No response from TeslaAPI - %s" % (URL))
 
-    meter_data = meter_r.json()
+    carData = carData.json()
 
     # check for Json
-    if not meter_data:
+    if not carData:
         raise ValueError("Converting response to JSON failed")
 
 
-    return meter_data
+    return carData
 
 
   def _signOfLife(self):
@@ -142,8 +146,8 @@ class DbusShelly1pmService:
 
   def _update(self):
     try:
-       #get data from Shelly Plug
-       #meter_data = self._getShellyData()
+       #get data from TeslaAPI Plug
+       car_data = self._getTeslaAPIData()
 
        config = self._getConfig()
        str(config['DEFAULT']['Phase'])
@@ -155,19 +159,26 @@ class DbusShelly1pmService:
          pre = '/Ac/' + phase
 
          if phase == inverter_phase:
-           #power = meter_data['meters'][0]['power']
-           #total = meter_data['meters'][0]['total']
-           voltage = 120
-           power = 1200
-           current = power / voltage
+           current = car_data['response']['charge_state']['charge_amps']
+           voltage = car_data['response']['charge_state']['charger_voltage']
+           power = voltage * current
 
            self._dbusservice['/Current'] = current
            self._dbusservice['/Ac/Power'] = power
            self._dbusservice[pre + '/Power'] = power
            if power > 0:
              self._dbusservice['/Status'] = 2
+             if not self.running:
+                self.startDate = datetime.now()
+                self.running = True
+
+             delta = datetime.now() - self.startDate
+             self._dbusservice['/ChargingTime'] = delta.total_seconds()
            else:
+             self.startDate = datetime.now()
              self._dbusservice['/Status'] = 0
+             self._dbusservice['/ChargingTime'] = 0
+             self.running = False
 
          else:
            self._dbusservice['/Ac/Power'] = 0
@@ -226,7 +237,7 @@ def main():
       _v = lambda p, v: (str(round(v, 1)) + 'V')
 
       #start our main-service
-      pvac_output = DbusShelly1pmService(
+      pvac_output = DbusTeslaAPIService(
         servicename='com.victronenergy.evcharger',
         paths={
           '/Mode': {'initial': 4, 'textformat': _mode},
