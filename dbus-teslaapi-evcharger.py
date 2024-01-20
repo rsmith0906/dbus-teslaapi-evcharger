@@ -65,7 +65,7 @@ class DbusTeslaAPIService:
     self.running = False
 
     # add _update function 'timer'
-    gobject.timeout_add(10000, self._update) # pause 250ms before the next request
+    gobject.timeout_add(60000, self._update) # pause 250ms before the next request
 
     # add _signOfLife 'timer' to get feedback in log every 5minutes
     gobject.timeout_add(self._getSignOfLifeInterval()*60*1000, self._signOfLife)
@@ -161,13 +161,26 @@ class DbusTeslaAPIService:
          if phase == inverter_phase:
            current = car_data['response']['charge_state']['charge_amps']
            voltage = car_data['response']['charge_state']['charger_voltage']
+           charge_state = car_data['response']['charge_state']['charging_state']
+           charge_port_latch = car_data['response']['charge_state']['charge_port_latch']
+           charge_energy_added = car_data['response']['charge_state']['charge_energy_added']
+
            power = voltage * current
 
            self._dbusservice['/Current'] = current
            self._dbusservice['/Ac/Power'] = power
            self._dbusservice[pre + '/Power'] = power
+           self._dbusservice['/Ac/Energy/Forward'] = charge_energy_added
+
+           if charge_state == 'Stopped':
+              if charge_port_latch == 'Engaged':
+                 self._dbusservice['/Status'] = 1
+              else:
+                 self._dbusservice['/Status'] = 0
+           else:
+              self._dbusservice['/Status'] = 2
+
            if power > 0:
-             self._dbusservice['/Status'] = 2
              if not self.running:
                 self.startDate = datetime.now()
                 self.running = True
@@ -176,7 +189,7 @@ class DbusTeslaAPIService:
              self._dbusservice['/ChargingTime'] = delta.total_seconds()
            else:
              self.startDate = datetime.now()
-             self._dbusservice['/Status'] = 0
+             
              self._dbusservice['/ChargingTime'] = 0
              self.running = False
 
@@ -240,7 +253,7 @@ def main():
       pvac_output = DbusTeslaAPIService(
         servicename='com.victronenergy.evcharger',
         paths={
-          '/Mode': {'initial': 4, 'textformat': _mode},
+          '/Mode': {'initial': 0, 'textformat': _mode},
           '/Ac/L1/Power': {'initial': 0, 'textformat': _w},
           '/Ac/Power': {'initial': 0, 'textformat': _w},
           '/Status': {'initial': 0, 'textformat': _state},
@@ -248,6 +261,7 @@ def main():
           '/MaxCurrent': {'initial': 0, 'textformat': _a},
           '/Current': {'initial': 0, 'textformat': _a},
           '/ChargingTime': {'initial': 0, 'textformat': _a},
+          '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
         })
 
       logging.info('Connected to dbus, and switching over to gobject.MainLoop() (= event based)')
