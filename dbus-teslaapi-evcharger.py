@@ -61,10 +61,10 @@ class DbusTeslaAPIService:
     self._lastUpdate = 0
     self._runningSeconds = 0
 
-    self.startDate = datetime.now()
-    self.lastCheck = datetime(2023, 12, 8)
-    self.running = False
-    self.carData = {}
+    self._startDate = datetime.now()
+    self._lastCheck = datetime(2023, 12, 8)
+    self._running = False
+    self._carData = {}
 
     # add _update function 'timer'
     gobject.timeout_add(500, self._update) # pause 250ms before the next request
@@ -116,7 +116,7 @@ class DbusTeslaAPIService:
         'Authorization': f'Bearer {token}'
     }
 
-    checkDiff = datetime.now() - self.lastCheck
+    checkDiff = datetime.now() - self._lastCheck
     checkSecs = checkDiff.total_seconds()
 
     if checkSecs > 10:
@@ -124,14 +124,14 @@ class DbusTeslaAPIService:
        # check for response
        if not response:
           raise ConnectionError("No response from TeslaAPI - %s" % (URL))
-       self.carData = response.json()
-       self.lastCheck = datetime.now()
+       self._carData = response.json()
+       self._lastCheck = datetime.now()
 
     # check for Json
-    if not self.carData:
+    if not self._carData:
         raise ValueError("Converting response to JSON failed")
     
-    return self.carData
+    return self._carData
 
 
   def _signOfLife(self):
@@ -183,16 +183,16 @@ class DbusTeslaAPIService:
 
            if power > 0:
              if not self.running:
-                self.startDate = datetime.now()
-                self.running = True
+                self._startDate = datetime.now()
+                self._running = True
 
              if charging:
-                delta = datetime.now() - self.startDate
+                delta = datetime.now() - self._startDate
                 self._dbusservice['/ChargingTime'] = delta.total_seconds()
            else:
-             self.startDate = datetime.now()
+             self._startDate = datetime.now()
              self._dbusservice['/ChargingTime'] = 0
-             self.running = False
+             self._running = False
 
          else:
            self._dbusservice['/Ac/Power'] = 0
