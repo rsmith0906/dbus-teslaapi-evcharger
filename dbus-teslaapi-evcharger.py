@@ -182,7 +182,7 @@ class DbusTeslaAPIService:
               charging = True
 
            if power > 0:
-             if not self.running:
+             if not self._running:
                 self._startDate = datetime.now()
                 self._running = True
 
