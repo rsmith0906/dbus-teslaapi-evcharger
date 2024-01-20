@@ -66,7 +66,7 @@ class DbusTeslaAPIService:
     self._carData = {}
 
     self._dbusservice['EV'] = new_service('com.victronenergy', "evcharger", 41)
-    self.add_standard_paths(self._dbusservice['EV'], productname, customname, connection, deviceinstance, config, {
+    self.add_standard_paths('EV', productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
           '/Ac/L1/Power': {'initial': 0, 'textformat': _w},
           '/Ac/Power': {'initial': 0, 'textformat': _w},
@@ -79,7 +79,7 @@ class DbusTeslaAPIService:
         })
     
     self._dbusservice['GRID'] = new_service('com.victronenergy', "grid", 42)
-    self.add_standard_paths(self._dbusservice['GRID'], "grid", 42, "Grid", "Grid", connection, deviceinstance, config, {
+    self.add_standard_paths('GRID', "grid", 42, "Grid", "Grid", connection, deviceinstance, config, {
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
           '/Ac/Energy/Reverse': {'initial': 0, 'textformat': _kwh},
           '/Ac/Energy/Power': {'initial': 0, 'textformat': _w},
@@ -134,28 +134,28 @@ class DbusTeslaAPIService:
     URL = "https://owner-api.teslamotors.com/api/1/vehicles/%s/vehicle_data" % (config['DEFAULT']['VehicleId'])
     return URL
 
-  def add_standard_paths(self, dbusservice, productname, customname, connection, deviceinstance, config, paths):
+  def add_standard_paths(self, dbusservicename, productname, customname, connection, deviceinstance, config, paths):
       # Create the management objects, as specified in the ccgx dbus-api document
-      dbusservice.add_path('/Mgmt/ProcessName', __file__)
-      dbusservice.add_path('/Mgmt/ProcessVersion', 'Unknown version, and running on Python ' + platform.python_version())
-      dbusservice.add_path('/Mgmt/Connection', connection)
+      self._dbusservice[dbusservicename].add_path('/Mgmt/ProcessName', __file__)
+      self._dbusservice[dbusservicename].add_path('/Mgmt/ProcessVersion', 'Unknown version, and running on Python ' + platform.python_version())
+      self._dbusservice[dbusservicename].add_path('/Mgmt/Connection', connection)
 
       # Create the mandatory objects
-      dbusservice.add_path('/DeviceInstance', deviceinstance)
-      dbusservice.add_path('/ProductId', 0xFFFF) # id assigned by Victron Support from SDM630v2.py
-      dbusservice.add_path('/ProductName', productname)
-      dbusservice.add_path('/CustomName', customname)
-      dbusservice.add_path('/Connected', 1)
-      dbusservice.add_path('/Latency', None)
-      dbusservice.add_path('/FirmwareVersion', self._getTeslaAPIVersion())
-      dbusservice.add_path('/HardwareVersion', 0)
-      dbusservice.add_path('/Position', int(config['DEFAULT']['Position']))
-      dbusservice.add_path('/Serial', self._getTeslaAPISerial())
-      dbusservice.add_path('/UpdateIndex', 0)
+      self._dbusservice[dbusservicename].add_path('/DeviceInstance', deviceinstance)
+      self._dbusservice[dbusservicename].add_path('/ProductId', 0xFFFF) # id assigned by Victron Support from SDM630v2.py
+      self._dbusservice[dbusservicename].add_path('/ProductName', productname)
+      self._dbusservice[dbusservicename].add_path('/CustomName', customname)
+      self._dbusservice[dbusservicename].add_path('/Connected', 1)
+      self._dbusservice[dbusservicename].add_path('/Latency', None)
+      self._dbusservice[dbusservicename].add_path('/FirmwareVersion', self._getTeslaAPIVersion())
+      self._dbusservice[dbusservicename].add_path('/HardwareVersion', 0)
+      self._dbusservice[dbusservicename].add_path('/Position', int(config['DEFAULT']['Position']))
+      self._dbusservice[dbusservicename].add_path('/Serial', self._getTeslaAPISerial())
+      self._dbusservice[dbusservicename].add_path('/UpdateIndex', 0)
 
       # add path values to dbus
       for path, settings in paths.items():
-        dbusservice.add_path(
+        self._dbusservice[dbusservicename].add_path(
           path, settings['initial'], gettextcallback=settings['textformat'], writeable=True, onchangecallback=self._handlechangedvalue)
 
   def _getTeslaAPIData(self):
