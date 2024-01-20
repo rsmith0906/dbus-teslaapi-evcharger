@@ -65,7 +65,7 @@ class DbusTeslaAPIService:
     self._running = False
     self._carData = {}
 
-    self._dbusservice['EV'] = new_service('com.victronenergy', "evcharger")
+    self._dbusservice['EV'] = new_service('com.victronenergy', "evcharger", 41)
     self.add_standard_paths(self._dbusservice['EV'], productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
           '/Ac/L1/Power': {'initial': 0, 'textformat': _w},
@@ -78,7 +78,7 @@ class DbusTeslaAPIService:
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
         })
     
-    self._dbusservice['GRID'] = new_service('com.victronenergy', "grid")
+    self._dbusservice['GRID'] = new_service('com.victronenergy', "grid", 42)
     self.add_standard_paths(self._dbusservice['GRID'], "grid", 42, "Grid", "Grid", connection, deviceinstance, config, {
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
           '/Ac/Energy/Reverse': {'initial': 0, 'textformat': _kwh},
