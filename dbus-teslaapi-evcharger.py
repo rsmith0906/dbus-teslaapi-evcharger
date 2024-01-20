@@ -20,6 +20,15 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), '/opt/victronenergy/d
 from vedbus import VeDbusService
 from datetime import datetime
 
+# Again not all of these needed this is just duplicating the Victron code.
+class SystemBus(dbus.bus.BusConnection):
+    def __new__(cls):
+        return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SYSTEM)
+ 
+class SessionBus(dbus.bus.BusConnection):
+    def __new__(cls):
+        return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SESSION)
+
 class DbusTeslaAPIService:
   def __init__(self, productname='Tesla API', connection='Tesla API HTTP JSON service'):
     config = self._getConfig()
@@ -34,8 +43,8 @@ class DbusTeslaAPIService:
     _w = lambda p, v: (str(round(v, 1)) + 'W')
     _v = lambda p, v: (str(round(v, 1)) + 'V')
 
-    self._dbusserviceev = VeDbusService("{}.http_{:02d}".format('com.victronenergy.evcharger', deviceinstance))
-    self._dbusservicegrid = VeDbusService("{}.http_{:02d}".format('com.victronenergy.grid', deviceinstance))
+    #self._dbusservice['EV'] = VeDbusService("{}.http_{:02d}".format('com.victronenergy.evcharger', deviceinstance))
+    #self._dbusservice['GRID'] = VeDbusService("{}.http_{:02d}".format('com.victronenergy.grid', deviceinstance))
 
     logging.debug("%s /DeviceInstance = %d" % ('com.victronenergy.evcharger', deviceinstance))
     logging.debug("%s /DeviceInstance = %d" % ('com.victronenergy.grid', deviceinstance))
@@ -45,8 +54,10 @@ class DbusTeslaAPIService:
     self._lastCheck = datetime(2023, 12, 8)
     self._running = False
     self._carData = {}
+    self._base = 'com.victronenergy'
+    self._dbusservice = {}
 
-    self.add_standard_paths(self._dbusserviceev, productname, customname, connection, deviceinstance, config, {
+    self._dbusservice['EV'] = self.new_service(self._base, "evcharger", 41, productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
           '/Ac/L1/Power': {'initial': 0, 'textformat': _w},
           '/Ac/Power': {'initial': 0, 'textformat': _w},
@@ -57,8 +68,8 @@ class DbusTeslaAPIService:
           '/ChargingTime': {'initial': 0, 'textformat': _a},
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
         })
-
-    self.add_standard_paths(self._dbusservicegrid, "Grid", "Grid", connection, deviceinstance, config, {
+    
+    self._dbusservice['GRID'] = self.new_service(self._base, "grid", 42, "Grid", "Grid", connection, deviceinstance, config, {
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
           '/Ac/Energy/Reverse': {'initial': 0, 'textformat': _kwh},
           '/Ac/Energy/Power': {'initial': 0, 'textformat': _w},
@@ -79,6 +90,18 @@ class DbusTeslaAPIService:
 
     # add _signOfLife 'timer' to get feedback in log every 5minutes
     gobject.timeout_add(self._getSignOfLifeInterval()*60*1000, self._signOfLife)
+
+  # Here is the bit you need to create multiple new services - try as much as possible to implement the Victron Dbus API requirements.
+  def new_service(base, type, id, productname, customname, connection, deviceinstance, config, paths):
+      #self =  VeDbusService("{}.{}.{}_id{:02d}".format(base, type, physical, id), self.dbusconnection())
+      self = VeDbusService("{}.{}_id{:02d}".format(base, type, id), self.dbusconnection())
+
+      self.add_standard_paths(self._dbusservice['EV'], productname, customname, connection, deviceinstance, config, paths)
+      
+      return self
+  
+  def dbusconnection():
+    return SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
 
   def add_standard_paths(self, dbusservice, productname, customname, connection, deviceinstance, config, paths):
       # Create the management objects, as specified in the ccgx dbus-api document
@@ -168,7 +191,7 @@ class DbusTeslaAPIService:
   def _signOfLife(self):
     logging.info("--- Start: sign of life ---")
     logging.info("Last _update() call: %s" % (self._lastUpdate))
-    logging.info("Last '/Ac/Out/L1/V': %s" % (self._dbusserviceev['/Ac/Out/L1/V']))
+    logging.info("Last '/Ac/Out/L1/V': %s" % (self._dbusservice['EV']['/Ac/Out/L1/V']))
     logging.info("--- End: sign of life ---")
     return True
 
@@ -195,35 +218,35 @@ class DbusTeslaAPIService:
 
            power = voltage * current
 
-           self._dbusserviceev['/Current'] = current
-           self._dbusserviceev['/Ac/Power'] = power
-           self._dbusserviceev[pre + '/Power'] = power
-           self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
+           self._dbusservice['EV']['/Current'] = current
+           self._dbusservice['EV']['/Ac/Power'] = power
+           self._dbusservice['EV'][pre + '/Power'] = power
+           self._dbusservice['EV']['/Ac/Energy/Forward'] = charge_energy_added
 
            charging = False
 
            if charge_state == 'Stopped':
               if charge_port_latch == 'Engaged':
-                 self._dbusserviceev['/Status'] = 1
+                 self._dbusservice['EV']['/Status'] = 1
               else:
-                 self._dbusserviceev['/Status'] = 0
-                 self._dbusserviceev['/ChargingTime'] = 0
+                 self._dbusservice['EV']['/Status'] = 0
+                 self._dbusservice['EV']['/ChargingTime'] = 0
            else:
-              self._dbusserviceev['/Status'] = 2
+              self._dbusservice['EV']['/Status'] = 2
               charging = True
 
            if power > 0:
              if voltage > 120:
-                self._dbusservicegrid['/Ac/Power'] = power
-                self._dbusservicegrid['/Ac/L1/Voltage'] = 120
-                self._dbusservicegrid['/Ac/L1/Current'] = int(current) / 2
-                self._dbusservicegrid['/Ac/L1/Power'] = int(power) / 2
-                self._dbusservicegrid['/Ac/L2/Voltage'] = 120
-                self._dbusservicegrid['/Ac/L2/Current'] = int(current) / 2
-                self._dbusservicegrid['/Ac/L2/Power'] = int(power) / 2
+                self._dbusservice['GRID']['/Ac/Power'] = power
+                self._dbusservice['GRID']['/Ac/L1/Voltage'] = 120
+                self._dbusservice['GRID']['/Ac/L1/Current'] = int(current) / 2
+                self._dbusservice['GRID']['/Ac/L1/Power'] = int(power) / 2
+                self._dbusservice['GRID']['/Ac/L2/Voltage'] = 120
+                self._dbusservice['GRID']['/Ac/L2/Current'] = int(current) / 2
+                self._dbusservice['GRID']['/Ac/L2/Power'] = int(power) / 2
              else:
-                self._dbusservicegrid['/Ac/L1/Voltage'] = 120
-                self._dbusservicegrid['/Ac/L2/Voltage'] = 0
+                self._dbusservice['GRID']['/Ac/L1/Voltage'] = 120
+                self._dbusservice['GRID']['/Ac/L2/Voltage'] = 0
 
              if not self._running:
                 self._startDate = datetime.now()
@@ -231,33 +254,33 @@ class DbusTeslaAPIService:
 
              if charging:
                 delta = datetime.now() - self._startDate
-                self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
+                self._dbusservice['EV']['/ChargingTime'] = delta.total_seconds()
            else:
              self._startDate = datetime.now()
-             self._dbusserviceev['/ChargingTime'] = 0
+             self._dbusservice['EV']['/ChargingTime'] = 0
              self._running = False
 
          else:
-           self._dbusserviceev['/Ac/Power'] = 0
-           self._dbusserviceev[pre + '/Power'] = 0
-           self._dbusserviceev['/Status'] = 0
+           self._dbusservice['EV']['/Ac/Power'] = 0
+           self._dbusservice['EV'][pre + '/Power'] = 0
+           self._dbusservice['EV']['/Status'] = 0
 
-       self._dbusserviceev['/Ac/L1/Power'] = self._dbusserviceev['/Ac/' + inverter_phase + '/Power']
+       self._dbusservice['EV']['/Ac/L1/Power'] = self._dbusservice['EV']['/Ac/' + inverter_phase + '/Power']
 
        #logging
-       logging.debug("Inverter Consumption (/Ac/L1/Power): %s" % (self._dbusserviceev['/Ac/L1/Power']))
+       logging.debug("Inverter Consumption (/Ac/L1/Power): %s" % (self._dbusservice['EV']['/Ac/L1/Power']))
        logging.debug("---");
 
        # increment UpdateIndex - to show that new data is available
-       index = self._dbusserviceev['/UpdateIndex'] + 1  # increment index
+       index = self._dbusservice['EV']['/UpdateIndex'] + 1  # increment index
        if index > 255:   # maximum value of the index
          index = 0       # overflow from 255 to 0
-       self._dbusserviceev['/UpdateIndex'] = index
+       self._dbusservice['EV']['/UpdateIndex'] = index
 
        #update lastupdate vars
        self._lastUpdate = time.time()
     except Exception as e:
-       self._dbusserviceev['/Status'] = 10
+       self._dbusservice['EV']['/Status'] = 10
        logging.critical('Error at %s', '_update', exc_info=e)
 
     # return true, otherwise add_timeout will be removed from GObject - see docs http://library.isr.ist.utl.pt/docs/pygtk2reference/gobject-functions.html#function-gobject--timeout-add
