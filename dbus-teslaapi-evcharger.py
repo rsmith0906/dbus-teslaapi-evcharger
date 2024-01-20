@@ -31,6 +31,9 @@ class SessionBus(dbus.bus.BusConnection):
         return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SESSION)
 
 class DbusTeslaAPIService:
+  _dbusservice = {} 
+  _base = 'com.victronenergy'
+
   def __init__(self, productname='Tesla API', connection='Tesla API HTTP JSON service'):
     config = self._getConfig()
     deviceinstance = int(config['DEFAULT']['Deviceinstance'])
@@ -55,8 +58,6 @@ class DbusTeslaAPIService:
     self._lastCheck = datetime(2023, 12, 8)
     self._running = False
     self._carData = {}
-    self._base = 'com.victronenergy'
-    self._dbusservice = {}
 
     self._dbusservice['EV'] = self.new_service(self._base, "evcharger", 41, productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
