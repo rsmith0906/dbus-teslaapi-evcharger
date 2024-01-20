@@ -30,6 +30,13 @@ class SessionBus(dbus.bus.BusConnection):
     def __new__(cls):
         return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SESSION)
 
+# Here is the bit you need to create multiple new services - try as much as possible to implement the Victron Dbus API requirements.
+def new_service(base, type, id, productname, customname, connection, deviceinstance, config, paths):
+    conn = SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
+    service = VeDbusService("{}.{}_id{:02d}".format(base, type, id), conn)
+    service.add_standard_paths(service, productname, customname, connection, deviceinstance, config, paths)
+    return service
+
 class DbusTeslaAPIService:
   _dbusservice = {} 
   _base = 'com.victronenergy'
@@ -92,13 +99,6 @@ class DbusTeslaAPIService:
 
     # add _signOfLife 'timer' to get feedback in log every 5minutes
     gobject.timeout_add(self._getSignOfLifeInterval()*60*1000, self._signOfLife)
-
-  # Here is the bit you need to create multiple new services - try as much as possible to implement the Victron Dbus API requirements.
-  def new_service(base, type, id, productname, customname, connection, deviceinstance, config, paths):
-      conn = SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
-      service = VeDbusService("{}.{}_id{:02d}".format(base, type, id), conn)
-      service.add_standard_paths(service, productname, customname, connection, deviceinstance, config, paths)
-      return service
 
   def add_standard_paths(self, dbusservice, productname, customname, connection, deviceinstance, config, paths):
       # Create the management objects, as specified in the ccgx dbus-api document
