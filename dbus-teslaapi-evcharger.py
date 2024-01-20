@@ -95,15 +95,10 @@ class DbusTeslaAPIService:
 
   # Here is the bit you need to create multiple new services - try as much as possible to implement the Victron Dbus API requirements.
   def new_service(base, type, id, productname, customname, connection, deviceinstance, config, paths):
-      #self =  VeDbusService("{}.{}.{}_id{:02d}".format(base, type, physical, id), self.dbusconnection())
-      self = VeDbusService("{}.{}_id{:02d}".format(base, type, id), self.dbusconnection())
-
-      self.add_standard_paths(self._dbusservice['EV'], productname, customname, connection, deviceinstance, config, paths)
-      
-      return self
-  
-  def dbusconnection():
-    return SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
+      conn = SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
+      service = VeDbusService("{}.{}_id{:02d}".format(base, type, id), conn)
+      service.add_standard_paths(service, productname, customname, connection, deviceinstance, config, paths)
+      return service
 
   def add_standard_paths(self, dbusservice, productname, customname, connection, deviceinstance, config, paths):
       # Create the management objects, as specified in the ccgx dbus-api document
