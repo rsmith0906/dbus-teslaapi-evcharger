@@ -31,7 +31,7 @@ class SessionBus(dbus.bus.BusConnection):
         return dbus.bus.BusConnection.__new__(cls, dbus.bus.BusConnection.TYPE_SESSION)
 
 # Here is the bit you need to create multiple new services - try as much as possible to implement the Victron Dbus API requirements.
-def new_service(base, type, id, productname, customname, connection, deviceinstance, config, paths):
+def new_service(base, type, id):
     conn = SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
     service = VeDbusService("{}.{}_id{:02d}".format(base, type, id), conn)
     return service
@@ -65,7 +65,7 @@ class DbusTeslaAPIService:
     self._running = False
     self._carData = {}
 
-    self._dbusservice['EV'] = new_service('com.victronenergy', "evcharger", 41, productname, customname, connection, deviceinstance, config)
+    self._dbusservice['EV'] = new_service('com.victronenergy', "evcharger")
     self.add_standard_paths(self._dbusservice['EV'], productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
           '/Ac/L1/Power': {'initial': 0, 'textformat': _w},
@@ -78,7 +78,7 @@ class DbusTeslaAPIService:
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
         })
     
-    self._dbusservice['GRID'] = new_service('com.victronenergy', "grid", 42, "Grid", "Grid", connection, deviceinstance, config)
+    self._dbusservice['GRID'] = new_service('com.victronenergy', "grid")
     self.add_standard_paths(self._dbusservice['GRID'], "grid", 42, "Grid", "Grid", connection, deviceinstance, config, {
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
           '/Ac/Energy/Reverse': {'initial': 0, 'textformat': _kwh},
