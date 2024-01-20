@@ -34,8 +34,32 @@ class SessionBus(dbus.bus.BusConnection):
 def new_service(base, type, id, productname, customname, connection, deviceinstance, config, paths):
     conn = SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
     service = VeDbusService("{}.{}_id{:02d}".format(base, type, id), conn)
-    service.add_standard_paths(service, productname, customname, connection, deviceinstance, config, paths)
+    add_standard_paths(service, productname, customname, connection, deviceinstance, config, paths)
     return service
+
+def add_standard_paths(self, dbusservice, productname, customname, connection, deviceinstance, config, paths):
+    # Create the management objects, as specified in the ccgx dbus-api document
+    dbusservice.add_path('/Mgmt/ProcessName', __file__)
+    dbusservice.add_path('/Mgmt/ProcessVersion', 'Unknown version, and running on Python ' + platform.python_version())
+    dbusservice.add_path('/Mgmt/Connection', connection)
+
+    # Create the mandatory objects
+    dbusservice.add_path('/DeviceInstance', deviceinstance)
+    dbusservice.add_path('/ProductId', 0xFFFF) # id assigned by Victron Support from SDM630v2.py
+    dbusservice.add_path('/ProductName', productname)
+    dbusservice.add_path('/CustomName', customname)
+    dbusservice.add_path('/Connected', 1)
+    dbusservice.add_path('/Latency', None)
+    dbusservice.add_path('/FirmwareVersion', self._getTeslaAPIVersion())
+    dbusservice.add_path('/HardwareVersion', 0)
+    dbusservice.add_path('/Position', int(config['DEFAULT']['Position']))
+    dbusservice.add_path('/Serial', self._getTeslaAPISerial())
+    dbusservice.add_path('/UpdateIndex', 0)
+
+    # add path values to dbus
+    for path, settings in paths.items():
+      dbusservice.add_path(
+        path, settings['initial'], gettextcallback=settings['textformat'], writeable=True, onchangecallback=self._handlechangedvalue)
 
 class DbusTeslaAPIService:
   _dbusservice = {} 
@@ -99,30 +123,6 @@ class DbusTeslaAPIService:
 
     # add _signOfLife 'timer' to get feedback in log every 5minutes
     gobject.timeout_add(self._getSignOfLifeInterval()*60*1000, self._signOfLife)
-
-  def add_standard_paths(self, dbusservice, productname, customname, connection, deviceinstance, config, paths):
-      # Create the management objects, as specified in the ccgx dbus-api document
-      dbusservice.add_path('/Mgmt/ProcessName', __file__)
-      dbusservice.add_path('/Mgmt/ProcessVersion', 'Unknown version, and running on Python ' + platform.python_version())
-      dbusservice.add_path('/Mgmt/Connection', connection)
-
-      # Create the mandatory objects
-      dbusservice.add_path('/DeviceInstance', deviceinstance)
-      dbusservice.add_path('/ProductId', 0xFFFF) # id assigned by Victron Support from SDM630v2.py
-      dbusservice.add_path('/ProductName', productname)
-      dbusservice.add_path('/CustomName', customname)
-      dbusservice.add_path('/Connected', 1)
-      dbusservice.add_path('/Latency', None)
-      dbusservice.add_path('/FirmwareVersion', self._getTeslaAPIVersion())
-      dbusservice.add_path('/HardwareVersion', 0)
-      dbusservice.add_path('/Position', int(config['DEFAULT']['Position']))
-      dbusservice.add_path('/Serial', self._getTeslaAPISerial())
-      dbusservice.add_path('/UpdateIndex', 0)
-
-      # add path values to dbus
-      for path, settings in paths.items():
-        dbusservice.add_path(
-          path, settings['initial'], gettextcallback=settings['textformat'], writeable=True, onchangecallback=self._handlechangedvalue)
 
   def _getConfig(self):
     config = configparser.ConfigParser()
