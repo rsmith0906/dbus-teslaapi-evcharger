@@ -174,10 +174,10 @@ class DbusShelly1pmService:
            self._dbusservice[pre + '/Power'] = 0
            self._dbusservice['/Status'] = 0
 
-       self._dbusservice['/Ac/L1/Power'] = self._dbusservice['/Ac/Out/' + inverter_phase + '/P']
+       self._dbusservice['/Ac/L1/Power'] = self._dbusservice['/Ac/' + inverter_phase + '/P']
 
        #logging
-       logging.debug("Inverter Consumption (/Ac/Out/L1/P): %s" % (self._dbusservice['/Ac/Out/L1/P']))
+       logging.debug("Inverter Consumption (/Ac/L1/Power): %s" % (self._dbusservice['/Ac/L1/Power']))
        logging.debug("---");
 
        # increment UpdateIndex - to show that new data is available
