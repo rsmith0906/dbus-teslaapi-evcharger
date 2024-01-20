@@ -31,6 +31,12 @@ class DbusTeslaAPIService:
 
     logging.debug("%s /DeviceInstance = %d" % (servicename, deviceinstance))
 
+    self._runningSeconds = 0
+    self._startDate = datetime.now()
+    self._lastCheck = datetime(2023, 12, 8)
+    self._running = False
+    self._carData = {}
+
     # Create the management objects, as specified in the ccgx dbus-api document
     self._dbusservice.add_path('/Mgmt/ProcessName', __file__)
     self._dbusservice.add_path('/Mgmt/ProcessVersion', 'Unkown version, and running on Python ' + platform.python_version())
@@ -59,12 +65,6 @@ class DbusTeslaAPIService:
 
     # last update
     self._lastUpdate = 0
-    self._runningSeconds = 0
-
-    self._startDate = datetime.now()
-    self._lastCheck = datetime(2023, 12, 8)
-    self._running = False
-    self._carData = {}
 
     # add _update function 'timer'
     gobject.timeout_add(500, self._update) # pause 250ms before the next request
