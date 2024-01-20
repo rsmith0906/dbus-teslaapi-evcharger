@@ -120,11 +120,12 @@ class DbusTeslaAPIService:
     checkSecs = checkDiff.total_seconds()
 
     if checkSecs > 10:
-       self.carData = requests.get(url = URL, headers=headers)
+       response = requests.get(url = URL, headers=headers)
        # check for response
-       if not self.carData:
+       if not response:
           raise ConnectionError("No response from TeslaAPI - %s" % (URL))
-       self.carData = self.carData.json()
+       self.carData = response.json()
+       self.lastCheck = datetime.now()
 
     # check for Json
     if not self.carData:
