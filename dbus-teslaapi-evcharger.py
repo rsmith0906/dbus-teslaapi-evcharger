@@ -33,7 +33,8 @@ class SessionBus(dbus.bus.BusConnection):
 # Here is the bit you need to create multiple new services - try as much as possible to implement the Victron Dbus API requirements.
 def new_service(base, type, id):
     conn = SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else SystemBus()
-    service = VeDbusService("{}.{}_id{:02d}".format(base, type, id), 'Tesla API HTTP JSON service')
+    #service = VeDbusService("{}.{}_id{:02d}".format(base, type, id), conn)
+    service = VeDbusService("{}.{}_id{:02d}".format(base, type, id))
     return service
 
 class DbusTeslaAPIService:
