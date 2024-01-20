@@ -70,25 +70,6 @@ class DbusTeslaAPIService:
     # add _signOfLife 'timer' to get feedback in log every 5minutes
     gobject.timeout_add(self._getSignOfLifeInterval()*60*1000, self._signOfLife)
 
-  def _getTeslaAPISerial(self):
-    #meter_data = self._getTeslaAPIData()
-
-    #if not meter_data['mac']:
-    #    raise ValueError("Response does not contain 'mac' attribute")
-
-    #serial = meter_data['mac']
-    serial = '000000000'
-    return serial
-
-  def _getTeslaAPIFWVersion(self):
-    #meter_data = self._getTeslaAPIData()
-
-    #if not meter_data['update']['old_version']:
-    #    raise ValueError("Response does not contain 'update/old_version' attribute")
-
-    #ver = meter_data['update']['old_version']
-    ver = "1.0"
-    return ver
 
   def _getConfig(self):
     config = configparser.ConfigParser()
@@ -172,6 +153,8 @@ class DbusTeslaAPIService:
            self._dbusservice[pre + '/Power'] = power
            self._dbusservice['/Ac/Energy/Forward'] = charge_energy_added
 
+           charging = False
+
            if charge_state == 'Stopped':
               if charge_port_latch == 'Engaged':
                  self._dbusservice['/Status'] = 1
@@ -179,17 +162,18 @@ class DbusTeslaAPIService:
                  self._dbusservice['/Status'] = 0
            else:
               self._dbusservice['/Status'] = 2
+              charging = True
 
            if power > 0:
              if not self.running:
                 self.startDate = datetime.now()
                 self.running = True
 
-             delta = datetime.now() - self.startDate
-             self._dbusservice['/ChargingTime'] = delta.total_seconds()
+             if charging:
+                delta = datetime.now() - self.startDate
+                self._dbusservice['/ChargingTime'] = delta.total_seconds()
            else:
              self.startDate = datetime.now()
-             
              self._dbusservice['/ChargingTime'] = 0
              self.running = False
 
@@ -213,6 +197,7 @@ class DbusTeslaAPIService:
        #update lastupdate vars
        self._lastUpdate = time.time()
     except Exception as e:
+       self._dbusservice['/Status'] = 10
        logging.critical('Error at %s', '_update', exc_info=e)
 
     # return true, otherwise add_timeout will be removed from GObject - see docs http://library.isr.ist.utl.pt/docs/pygtk2reference/gobject-functions.html#function-gobject--timeout-add
