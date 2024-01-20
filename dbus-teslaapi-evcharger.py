@@ -152,7 +152,7 @@ class DbusShelly1pmService:
 
        #send data to DBus
        for phase in ['L1']:
-         pre = '/Ac/Out/' + phase
+         pre = '/Ac/' + phase
 
          if phase == inverter_phase:
            #power = meter_data['meters'][0]['power']
