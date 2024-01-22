@@ -259,7 +259,7 @@ class DbusTeslaAPIService:
             pre = '/Ac/' + phase
 
             if phase == inverter_phase:
-              current = car_data['response']['charge_state']['charge_amps']
+              current = car_data['response']['charge_state']['charger_actual_current']
               voltage = car_data['response']['charge_state']['charger_voltage']
               charger_power = car_data['response']['charge_state']['charger_power']
               charge_state = car_data['response']['charge_state']['charging_state']
