@@ -112,10 +112,18 @@ class DbusTeslaAPIService:
 
   def _getTeslaAPISerial(self):
     try:
+      config = self._getConfig()
+      car_id = config['DEFAULT']['VehicleId']
+
+      carVin = os.environ[f"{car_id}-vin"]
+      if self.is_not_blank(carVin):
+         return carVin
+        
       car_data = self._getTeslaAPIData()
       vin = car_data['response']['vin']
       if not vin:
           vin = 0
+      os.environ[f"{car_id}-vin"] = vin
       return str(vin)
     except Exception as e:
       error_message = str(e)
@@ -125,10 +133,18 @@ class DbusTeslaAPIService:
       
   def _getTeslaAPIVersion(self):
     try:
+      config = self._getConfig()
+      car_id = config['DEFAULT']['VehicleId']
+
+      version = os.environ[f"{car_id}-version"]
+      if self.is_not_blank(version):
+         return version
+
       car_data = self._getTeslaAPIData()
       version = car_data['response']['vehicle_state']['car_version']
       if not version:
           version = 0
+      os.environ[f"{car_id}-version"] = version
       return str(version)
     except Exception as e:
       error_message = str(e)
@@ -161,6 +177,8 @@ class DbusTeslaAPIService:
     checkDiff = datetime.now() - self._lastCheckData
     checkSecs = checkDiff.total_seconds()
 
+    self._showInfoMessage(f"Wait Seconds - {self._wait_seconds}")
+
     if checkSecs > self._wait_seconds:
        response = requests.get(url = URL, headers=headers)
        response.raise_for_status()
@@ -182,6 +200,8 @@ class DbusTeslaAPIService:
     config = self._getConfig()
     refreshToken = config['DEFAULT']['RefreshToken']
 
+    self._showInfoMessage('Get Access Token')
+
     URL = 'https://auth.tesla.com/oauth2/v3/token'
 
     body = {
@@ -196,7 +216,7 @@ class DbusTeslaAPIService:
 
     # check for response
     if not response:
-        raise ConnectionError("No response from Shelly Plug - %s" % (URL))
+        raise ConnectionError("No response from Tesla API - %s" % (URL))
 
     response = response.json()
 
@@ -286,7 +306,6 @@ class DbusTeslaAPIService:
           logging.debug("---");
 
           #update last update vars
-          self._lastUpdate = time.time()
           self._wait_seconds = 10
     except Exception as e:
       error_message = str(e)
@@ -313,6 +332,7 @@ class DbusTeslaAPIService:
         self._token = self._getAccessToken()
         logging.critical('Error at %s', '_update', exc_info=e)
       
+    self._lastUpdate = time.time()
     self._signalChanges()
 
     # return true, otherwise add_timeout will be removed from GObject - see docs http://library.isr.ist.utl.pt/docs/pygtk2reference/gobject-functions.html#function-gobject--timeout-add
@@ -334,7 +354,8 @@ class DbusTeslaAPIService:
     logging.debug("someone else updated %s to %s" % (path, value))
     return True # accept the change
 
-
+  def is_not_blank(s):
+      return bool(s and not s.isspace())
 
 def main():
   #configure logging
