@@ -211,10 +211,7 @@ class DbusTeslaAPIService:
     return accessToken
 
   def _signOfLife(self):
-    logging.info("--- Start: sign of life ---")
-    logging.info("Last _update() call: %s" % (self._lastUpdate))
-    logging.info("Last '/Ac/Out/L1/V': %s" % (self._dbusserviceev['/Ac/Out/L1/V']))
-    logging.info("--- End: sign of life ---")
+    logging.info("Start: sign of life - Last _update() call: %s" % (self._lastUpdate))
     return True
 
   def _update(self):
@@ -293,10 +290,12 @@ class DbusTeslaAPIService:
     except Exception as e:
       error_message = str(e)
       if self._request_timeout_string in error_message:
-        self._dbusserviceev['/Status'] = "Car Sleeping"
+        self._dbusserviceev['/Status'] = 0
+        self._dbusserviceev['/Mode'] = "Car Sleeping"
         self._wait_seconds = 60
       elif self._too_many_requests in error_message:
-        self._dbusserviceev['/Status'] = "Too Many Requests"
+        self._dbusserviceev['/Status'] = 0
+        self._dbusserviceev['/Mode'] = "Too Many Requests"
         self._lastCheckData = datetime.now()
         self._wait_seconds = self._wait_seconds + 10
       else:
