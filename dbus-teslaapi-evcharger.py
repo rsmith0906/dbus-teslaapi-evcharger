@@ -114,7 +114,7 @@ class DbusTeslaAPIService:
 
       logging.info('Start Get Serial')
 
-      vin = os.environ.get(f"vin_{car_id}")
+      vin = os.environ.get(f"VIN_{car_id}")
       if self.is_not_blank(vin):
          logging.info(f"return cached vin {vin}")
          return vin
@@ -129,8 +129,9 @@ class DbusTeslaAPIService:
 
       logging.info('Start Get Version')
 
-      version = os.environ.get(f"version_{car_id}")
+      version = os.environ.get(f"VERSION_{car_id}")
       if self.is_not_blank(version):
+         logging.info(f"return cached version {version}")
          return version
 
       if not version:
@@ -180,17 +181,13 @@ class DbusTeslaAPIService:
        if not self._carData:
           raise ValueError("Converting response to JSON failed")
        
-       savedVin = os.environ.get(f"vin_{car_id}")
        vin = self._carData['response']['vin']
-       if not savedVin and not vin == savedVin:
-         logging.info(vin)
-         os.environ[f"vin_{car_id}"] = vin
-
-       savedVersion = os.environ.get(f"vin_{car_id}")
+       logging.info(vin)
+       os.environ[f"VIN_{car_id}"] = vin
+        
        version = self._carData['response']['vehicle_state']['car_version']
-       if not savedVersion and not vin == savedVersion:
-         logging.info(version)
-         os.environ[f"version_{car_id}"] = version
+       logging.info(version)
+       os.environ[f"VERSION_{car_id}"] = version
 
        return self._carData
     else:
