@@ -42,6 +42,7 @@ class DbusTeslaAPIService:
     self._runningSeconds = 0
     self._startDate = datetime.now()
     self._lastCheck = datetime(2023, 12, 8)
+    self._lastCheckData = datetime(2023, 12, 8)
     self._running = False
     self._carData = {}
     self._token = None
@@ -141,7 +142,7 @@ class DbusTeslaAPIService:
         'Authorization': f'Bearer {token}'
     }
 
-    checkDiff = datetime.now() - self._lastCheck
+    checkDiff = datetime.now() - self._lastCheckData
     checkSecs = checkDiff.total_seconds()
 
     if checkSecs > 10:
@@ -150,7 +151,7 @@ class DbusTeslaAPIService:
        if not response:
           raise ConnectionError("No response from TeslaAPI - %s" % (URL))
        self._carData = response.json()
-       self._lastCheck = datetime.now()
+       self._lastCheckData = datetime.now()
 
     # check for Json
     if not self._carData:
