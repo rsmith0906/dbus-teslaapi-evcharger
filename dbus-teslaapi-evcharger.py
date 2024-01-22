@@ -239,6 +239,10 @@ class DbusTeslaAPIService:
        if self.is_time_between_midnight_and_8am():
           self._wait_seconds = 60 * 10
 
+       inverterPower = self.getInverterPower()
+       if (inverterPower > 500):
+          self._wait_seconds = 10
+
        car_id = config['DEFAULT']['VehicleId']
 
        #get data from TeslaAPI Plug
@@ -301,12 +305,6 @@ class DbusTeslaAPIService:
               self._dbusserviceev[pre + '/Power'] = 0
               self._dbusserviceev['/Current'] = 0
               self._running = False
-
-          #self._dbusserviceev['/Ac/L1/Power'] = self._dbusserviceev['/Ac/' + inverter_phase + '/Power']
-
-          #logging
-          logging.debug("Inverter Consumption (/Ac/L1/Power): %s" % (self._dbusserviceev['/Ac/L1/Power']))
-          logging.debug("---");
        
        else:
          if charging:
@@ -374,6 +372,14 @@ class DbusTeslaAPIService:
         return None
     except Exception as e:
       return None
+  
+  def getInverterPower(self):
+    inverter_data = self.read_data("Inverter")
+    if inverter_data:
+       return int(inverter_data['Power'])
+    else:
+       return 0
+
     
   def getCurrentDateAsLong(self):
     now = datetime.now()
@@ -398,7 +404,7 @@ class DbusTeslaAPIService:
   def getDateFromLong(self, long):
     return datetime.fromtimestamp(long)
     
-  def is_time_between_midnight_and_8am():
+  def is_time_between_midnight_and_8am(self):
       # Get the current time
       current_time = datetime.now().time()
 
