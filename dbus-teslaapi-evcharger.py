@@ -173,7 +173,7 @@ class DbusTeslaAPIService:
     if not response:
         raise ConnectionError("No response from Shelly Plug - %s" % (URL))
 
-    response = device_info.json()
+    response = response.json()
 
     # check for Json
     if not response:
