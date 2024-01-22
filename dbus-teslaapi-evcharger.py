@@ -114,8 +114,11 @@ class DbusTeslaAPIService:
           vin = 0
       return str(vin)
     except Exception as e:
-      logging.critical('Error at %s', '_update', exc_info=e)
-
+      error_message = str(e)
+      specific_string = "Request Timeout"
+      if not specific_string in error_message:
+        logging.critical('Error at %s', '_update', exc_info=e)
+      
   def _getTeslaAPIVersion(self):
     try:
       car_data = self._getTeslaAPIData()
@@ -124,7 +127,10 @@ class DbusTeslaAPIService:
           version = 0
       return str(version)
     except Exception as e:
-      logging.critical('Error at %s', '_update', exc_info=e)
+      error_message = str(e)
+      specific_string = "Request Timeout"
+      if not specific_string in error_message:
+        logging.critical('Error at %s', '_update', exc_info=e)
 
   def _getTeslaAPIStatusUrl(self):
     config = self._getConfig()
@@ -280,10 +286,16 @@ class DbusTeslaAPIService:
        #update lastupdate vars
        self._lastUpdate = time.time()
     except Exception as e:
-       self._dbusserviceev['/Status'] = 10
-       self._token = self._getAccessToken()
-       logging.critical('Error at %s', '_update', exc_info=e)
+      error_message = str(e)
+      specific_string = "Request Timeout"
 
+      if specific_string in error_message:
+        self._dbusserviceev['/Status'] = "Car Sleeping"
+      else:
+        self._dbusserviceev['/Status'] = 10
+        self._token = self._getAccessToken()
+        logging.critical('Error at %s', '_update', exc_info=e)
+      
     # return true, otherwise add_timeout will be removed from GObject - see docs http://library.isr.ist.utl.pt/docs/pygtk2reference/gobject-functions.html#function-gobject--timeout-add
     return True
 
