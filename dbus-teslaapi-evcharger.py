@@ -166,6 +166,8 @@ class DbusTeslaAPIService:
 
     if checkSecs > self._wait_seconds:
        self._lastCheckData = datetime.now()
+       logging.info(f"Last Get Tesla Data: {self._lastCheckData}")
+
        response = requests.get(url = URL, headers=headers)
        response.raise_for_status()
 
@@ -192,7 +194,6 @@ class DbusTeslaAPIService:
 
        return self._carData
     else:
-       logging.info(f"Last Get Tesla Data: {self._lastCheckData}")
        return None
 
   def _getAccessToken(self):
