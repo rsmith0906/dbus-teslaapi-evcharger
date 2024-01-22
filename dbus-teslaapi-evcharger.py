@@ -135,10 +135,10 @@ class DbusTeslaAPIService:
     if not self._token:
         raise ValueError("Could not retrieve Tesla Token")
 
-    logging.info(self._token)
+    token = self._token
 
     headers = {
-        'Authorization': f'Bearer {self._token}'
+        'Authorization': f'Bearer {token}'
     }
 
     checkDiff = datetime.now() - self._lastCheck
