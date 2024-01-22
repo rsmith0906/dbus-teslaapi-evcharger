@@ -352,7 +352,7 @@ class DbusTeslaAPIService:
     logging.debug("someone else updated %s to %s" % (path, value))
     return True # accept the change
 
-  def is_not_blank(s):
+  def is_not_blank(self, s):
       return bool(s and not s.isspace())
 
 def main():
