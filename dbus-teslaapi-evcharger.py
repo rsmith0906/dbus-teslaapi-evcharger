@@ -51,6 +51,7 @@ class DbusTeslaAPIService:
     self._wait_seconds = 10
     self._lastMessage = ""
     self._lastUpdate = 0
+    self._cacheInverterPower = 0
 
     self.add_standard_paths(self._dbusserviceev, productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
@@ -240,8 +241,12 @@ class DbusTeslaAPIService:
           self._wait_seconds = 60 * 10
 
        inverterPower = self.getInverterPower()
-       if (inverterPower > 500):
+       if inverterPower > 500:
           self._wait_seconds = 10
+
+       if not self._cacheInverterPower == inverterPower:
+          self._wait_seconds = 10
+          self._cacheInverterPower = inverterPower
 
        car_id = config['DEFAULT']['VehicleId']
 
