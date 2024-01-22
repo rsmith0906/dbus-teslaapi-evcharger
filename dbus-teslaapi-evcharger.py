@@ -46,6 +46,9 @@ class DbusTeslaAPIService:
     self._running = False
     self._carData = {}
     self._token = None
+    self._request_timeout_string = "Request Timeout"
+    self._too_many_requests = "Too Many Requests"
+    self._wait_seconds = 10
 
     self.add_standard_paths(self._dbusserviceev, productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
@@ -157,7 +160,7 @@ class DbusTeslaAPIService:
     checkDiff = datetime.now() - self._lastCheckData
     checkSecs = checkDiff.total_seconds()
 
-    if checkSecs > 10:
+    if checkSecs > self._wait_seconds:
        response = requests.get(url = URL, headers=headers)
        response.raise_for_status()
 
@@ -285,13 +288,18 @@ class DbusTeslaAPIService:
 
        #update lastupdate vars
        self._lastUpdate = time.time()
+       self._wait_seconds = 10
     except Exception as e:
       error_message = str(e)
-      specific_string = "Request Timeout"
-
-      if specific_string in error_message:
+      if self._request_timeout_string in error_message:
         self._dbusserviceev['/Status'] = "Car Sleeping"
+        self._wait_seconds = 60
+      if self._too_many_requests in error_message:
+        self._dbusserviceev['/Status'] = "Too Many Requests"
+        self._lastCheckData = datetime.now()
+        self._wait_seconds = self._wait_seconds + 10
       else:
+        self._wait_seconds = 60
         self._dbusserviceev['/Status'] = 10
         self._token = self._getAccessToken()
         logging.critical('Error at %s', '_update', exc_info=e)
@@ -321,14 +329,6 @@ def main():
       from dbus.mainloop.glib import DBusGMainLoop
       # Have a mainloop, so we can send/receive asynchronous calls to and from dbus
       DBusGMainLoop(set_as_default=True)
-
-      #formatting
-      _kwh = lambda p, v: (str(round(v, 2)) + 'kWh')
-      _state = lambda p, v: (str(v))
-      _mode = lambda p, v: (str(v))
-      _a = lambda p, v: (str(round(v, 1)) + 'A')
-      _w = lambda p, v: (str(round(v, 1)) + 'W')
-      _v = lambda p, v: (str(round(v, 1)) + 'V')
 
       #start our main-service
       pvac_output = DbusTeslaAPIService()
