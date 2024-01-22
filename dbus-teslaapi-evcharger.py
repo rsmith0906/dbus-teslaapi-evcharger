@@ -111,10 +111,9 @@ class DbusTeslaAPIService:
   def _getTeslaAPISerial(self):
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
+      car_data = self.read_data(car_id)
+      vin = car_data['response']['vin']
 
-      logging.info('Start Get Serial')
-
-      vin = os.environ.get(f"TESLAVIN")
       if self.is_not_blank(vin):
          logging.info(f"return cached vin {vin}")
          return vin
@@ -126,10 +125,9 @@ class DbusTeslaAPIService:
   def _getTeslaAPIVersion(self):
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
+      car_data = self.read_data(car_id)
+      version = car_data['response']['vehicle_state']['car_version']
 
-      logging.info('Start Get Version')
-
-      version = os.environ.get(f"TESLAVERSION")
       if self.is_not_blank(version):
          logging.info(f"return cached version {version}")
          return version
@@ -182,12 +180,9 @@ class DbusTeslaAPIService:
           raise ValueError("Converting response to JSON failed")
        
        vin = self._carData['response']['vin']
-       logging.info(vin)
-       os.environ[f"TESLAVIN"] = vin
+       self.save_data(car_id, self._carData)
         
        version = self._carData['response']['vehicle_state']['car_version']
-       logging.info(version)
-       os.environ[f"TESLAVERSION"] = version
 
        return self._carData
     else:
@@ -355,6 +350,14 @@ class DbusTeslaAPIService:
 
   def is_not_blank(self, s):
       return bool(s and not s.isspace())
+  
+  def save_data(self, key, value):
+    file = open(f"{key}.json", 'w') 
+    file.write(value) 
+    file.close() 
+
+  def read_data(self, key):
+    return json.load(f"{key}.json") 
 
 def main():
   #configure logging
