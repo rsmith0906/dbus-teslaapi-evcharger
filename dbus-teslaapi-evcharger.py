@@ -50,6 +50,7 @@ class DbusTeslaAPIService:
     self._too_many_requests = "Too Many Requests"
     self._wait_seconds = 10
     self._lastMessage = ""
+    self._lastUpdate = 0
 
     self.add_standard_paths(self._dbusserviceev, productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
@@ -62,9 +63,6 @@ class DbusTeslaAPIService:
           '/ChargingTime': {'initial': 0, 'textformat': _a},
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
         })
-
-    # last update
-    self._lastUpdate = 0
 
     # add _update function 'timer'
     gobject.timeout_add(500, self._update) # pause 250ms before the next request
@@ -115,8 +113,11 @@ class DbusTeslaAPIService:
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
 
+      logging.info('Start Get Serial')
+
       vin = os.environ.get(f"vin_{car_id}")
       if self.is_not_blank(vin):
+         logging.info(f"return cached vin {vin}")
          return vin
         
       car_data = self._getTeslaAPIData()
