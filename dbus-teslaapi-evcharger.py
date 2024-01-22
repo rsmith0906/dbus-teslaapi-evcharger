@@ -250,7 +250,6 @@ class DbusTeslaAPIService:
              raise ValueError("NoPower")
 
           self._showInfoMessage('Car Awake')
-          self._wait_seconds = 10
 
           #send data to DBus
           for phase in ['L1']:
@@ -274,12 +273,14 @@ class DbusTeslaAPIService:
                   else:
                     self._dbusserviceev['/Status'] = 0
                     self._dbusserviceev['/ChargingTime'] = 0
+                  self._wait_seconds = 60
               elif charge_state == 'Charging':
                   power = voltage * current
                   self._dbusserviceev['/Status'] = 2
                   self._dbusserviceev['/Current'] = current
                   self._dbusserviceev['/Ac/Power'] = power
                   self._dbusserviceev[pre + '/Power'] = power
+                  self._wait_seconds = 15
 
                   if not self._running:
                      self._startDate = datetime.now()
@@ -290,6 +291,7 @@ class DbusTeslaAPIService:
                   charging = True
               else:
                   self._dbusserviceev['/Status'] = 10
+                  self._wait_seconds = 60
             else:
               self._dbusserviceev['/Status'] = 0
 
@@ -315,7 +317,7 @@ class DbusTeslaAPIService:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "Car Sleeping"
         self._showInfoMessage('Car Sleeping')
-        self._wait_seconds = 60
+        self._wait_seconds = 120
       elif self._too_many_requests in error_message:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "Too Many Requests"
@@ -325,7 +327,7 @@ class DbusTeslaAPIService:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "No Power to Charger"
         self._showInfoMessage('No Power to Charger')
-        self._wait_seconds = 60
+        self._wait_seconds = 120
       else:
         self._wait_seconds = 60
         self._dbusserviceev['/Status'] = 10
@@ -364,7 +366,7 @@ class DbusTeslaAPIService:
 
   def read_data(self, key):
     if os.path.exists(f"/tmp/{key}.json"):
-      with open(f"/tmp/{key}.json", 'r') as file:
+      with open(f"{key}.json", 'r') as file:
         return json.load(file)
     else:
        return None
