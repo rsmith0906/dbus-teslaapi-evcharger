@@ -245,10 +245,10 @@ class DbusTeslaAPIService:
           self._wait_seconds = 10
 
        if not self._cacheInverterPower == inverterPower:
+          logging.info(f"Inverter Power Level Changed: {inverterPower}")
           self._wait_seconds = 10
+          self._lastCheckData = datetime(2023, 12, 8)
           self._cacheInverterPower = inverterPower
-
-       car_id = config['DEFAULT']['VehicleId']
 
        #get data from TeslaAPI Plug
        car_data = self._getTeslaAPIData()
