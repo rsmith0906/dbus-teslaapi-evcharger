@@ -259,14 +259,11 @@ class DbusTeslaAPIService:
             if phase == inverter_phase:
               current = car_data['response']['charge_state']['charge_amps']
               voltage = car_data['response']['charge_state']['charger_voltage']
-              power = car_data['response']['charge_state']['charger_power']
+              charger_power = car_data['response']['charge_state']['charger_power']
               charge_state = car_data['response']['charge_state']['charging_state']
               charge_port_latch = car_data['response']['charge_state']['charge_port_latch']
               charge_energy_added = car_data['response']['charge_state']['charge_energy_added']
               
-              self._dbusserviceev['/Current'] = current
-              self._dbusserviceev['/Ac/Power'] = power
-              self._dbusserviceev[pre + '/Power'] = power
               self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
 
               charging = False
@@ -277,8 +274,14 @@ class DbusTeslaAPIService:
                   else:
                     self._dbusserviceev['/Status'] = 0
                     self._dbusserviceev['/ChargingTime'] = 0
-              else:
+              elif charge_state == 'Charging':
+                  power = voltage * current
                   self._dbusserviceev['/Status'] = 2
+                  self._dbusserviceev['/Current'] = current
+                  self._dbusserviceev['/Ac/Power'] = power
+                  self._dbusserviceev[pre + '/Power'] = power
+              else:
+                  self._dbusserviceev['/Status'] = 10
                   charging = True
 
               if power > 0:
