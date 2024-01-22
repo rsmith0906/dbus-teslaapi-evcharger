@@ -132,6 +132,9 @@ class DbusTeslaAPIService:
     if not self._token:
        self._token = self._getAccessToken()
 
+    if not self._token:
+        raise ValueError("Could not retrieve Tesla Token")
+
     headers = {
         'Authorization': f'Bearer {self._token}'
     }
@@ -184,6 +187,8 @@ class DbusTeslaAPIService:
     expiresIn = response["expires_in"]
     tokenType = response["token_type"]
   
+    logging.info(accessToken)
+
     return accessToken
 
   def _signOfLife(self):
