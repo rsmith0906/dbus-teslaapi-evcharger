@@ -170,11 +170,12 @@ class DbusTeslaAPIService:
        self._carData = response.json()
        self._lastCheckData = datetime.now()
 
-    # check for Json
-    if not self._carData:
-        raise ValueError("Converting response to JSON failed")
-    
-    return self._carData
+       # check for Json
+       if not self._carData:
+          raise ValueError("Converting response to JSON failed")
+       return self._carData
+    else:
+       return None
 
   def _getAccessToken(self):
     config = self._getConfig()
@@ -218,77 +219,77 @@ class DbusTeslaAPIService:
 
   def _update(self):
     try:
-       #get data from TeslaAPI Plug
-       car_data = self._getTeslaAPIData()
-
        config = self._getConfig()
        str(config['DEFAULT']['Phase'])
 
-       inverter_phase = str(config['DEFAULT']['Phase'])
+       #get data from TeslaAPI Plug
+       car_data = self._getTeslaAPIData()
+       if car_data:
+          inverter_phase = str(config['DEFAULT']['Phase'])
 
-       #send data to DBus
-       for phase in ['L1']:
-         pre = '/Ac/' + phase
+          #send data to DBus
+          for phase in ['L1']:
+            pre = '/Ac/' + phase
 
-         if phase == inverter_phase:
-           current = car_data['response']['charge_state']['charge_amps']
-           voltage = car_data['response']['charge_state']['charger_voltage']
-           charge_state = car_data['response']['charge_state']['charging_state']
-           charge_port_latch = car_data['response']['charge_state']['charge_port_latch']
-           charge_energy_added = car_data['response']['charge_state']['charge_energy_added']
+            if phase == inverter_phase:
+              current = car_data['response']['charge_state']['charge_amps']
+              voltage = car_data['response']['charge_state']['charger_voltage']
+              charge_state = car_data['response']['charge_state']['charging_state']
+              charge_port_latch = car_data['response']['charge_state']['charge_port_latch']
+              charge_energy_added = car_data['response']['charge_state']['charge_energy_added']
 
-           power = voltage * current
+              power = voltage * current
 
-           self._dbusserviceev['/Current'] = current
-           self._dbusserviceev['/Ac/Power'] = power
-           self._dbusserviceev[pre + '/Power'] = power
-           self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
+              self._dbusserviceev['/Current'] = current
+              self._dbusserviceev['/Ac/Power'] = power
+              self._dbusserviceev[pre + '/Power'] = power
+              self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
 
-           charging = False
+              charging = False
 
-           if charge_state == 'Stopped':
-              if charge_port_latch == 'Engaged':
-                 self._dbusserviceev['/Status'] = 1
+              if charge_state == 'Stopped':
+                  if charge_port_latch == 'Engaged':
+                    self._dbusserviceev['/Status'] = 1
+                  else:
+                    self._dbusserviceev['/Status'] = 0
+                    self._dbusserviceev['/ChargingTime'] = 0
               else:
-                 self._dbusserviceev['/Status'] = 0
-                 self._dbusserviceev['/ChargingTime'] = 0
-           else:
-              self._dbusserviceev['/Status'] = 2
-              charging = True
+                  self._dbusserviceev['/Status'] = 2
+                  charging = True
 
-           if power > 0:
-             if not self._running:
+              if power > 0:
+                if not self._running:
+                    self._startDate = datetime.now()
+                    self._running = True
+
+                if charging:
+                    delta = datetime.now() - self._startDate
+                    self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
+              else:
                 self._startDate = datetime.now()
-                self._running = True
+                self._dbusserviceev['/ChargingTime'] = 0
+                self._running = False
 
-             if charging:
-                delta = datetime.now() - self._startDate
-                self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
-           else:
-             self._startDate = datetime.now()
-             self._dbusserviceev['/ChargingTime'] = 0
-             self._running = False
+            else:
+              self._dbusserviceev['/Ac/Power'] = 0
+              self._dbusserviceev[pre + '/Power'] = 0
+              self._dbusserviceev['/Status'] = 0
 
-         else:
-           self._dbusserviceev['/Ac/Power'] = 0
-           self._dbusserviceev[pre + '/Power'] = 0
-           self._dbusserviceev['/Status'] = 0
+          self._dbusserviceev['/Ac/L1/Power'] = self._dbusserviceev['/Ac/' + inverter_phase + '/Power']
 
-       self._dbusserviceev['/Ac/L1/Power'] = self._dbusserviceev['/Ac/' + inverter_phase + '/Power']
+          #logging
+          logging.debug("Inverter Consumption (/Ac/L1/Power): %s" % (self._dbusserviceev['/Ac/L1/Power']))
+          logging.debug("---");
 
-       #logging
-       logging.debug("Inverter Consumption (/Ac/L1/Power): %s" % (self._dbusserviceev['/Ac/L1/Power']))
-       logging.debug("---");
+          # increment UpdateIndex - to show that new data is available
+          index = self._dbusserviceev['/UpdateIndex'] + 1  # increment index
+          if index > 255:   # maximum value of the index
+            index = 0       # overflow from 255 to 0
+          self._dbusserviceev['/UpdateIndex'] = index
 
-       # increment UpdateIndex - to show that new data is available
-       index = self._dbusserviceev['/UpdateIndex'] + 1  # increment index
-       if index > 255:   # maximum value of the index
-         index = 0       # overflow from 255 to 0
-       self._dbusserviceev['/UpdateIndex'] = index
-
-       #update lastupdate vars
-       self._lastUpdate = time.time()
-       self._wait_seconds = 10
+          #update last update vars
+          self._lastUpdate = time.time()
+          self._wait_seconds = 10
     except Exception as e:
       error_message = str(e)
       if self._request_timeout_string in error_message:
