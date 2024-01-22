@@ -115,7 +115,7 @@ class DbusTeslaAPIService:
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
 
-      carVin = os.environ[f"{car_id}-vin"]
+      carVin = os.environ.get(f"vin_{car_id}")
       if self.is_not_blank(carVin):
          return carVin
         
@@ -123,7 +123,7 @@ class DbusTeslaAPIService:
       vin = car_data['response']['vin']
       if not vin:
           vin = 0
-      os.environ[f"{car_id}-vin"] = vin
+      os.environ[f"vin_{car_id}"] = vin
       return str(vin)
     except Exception as e:
       error_message = str(e)
@@ -136,7 +136,7 @@ class DbusTeslaAPIService:
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
 
-      version = os.environ[f"{car_id}-version"]
+      version = os.environ.get(f"version_{car_id}")
       if self.is_not_blank(version):
          return version
 
@@ -144,7 +144,7 @@ class DbusTeslaAPIService:
       version = car_data['response']['vehicle_state']['car_version']
       if not version:
           version = 0
-      os.environ[f"{car_id}-version"] = version
+      os.environ[f"version_{car_id}"] = version
       return str(version)
     except Exception as e:
       error_message = str(e)
@@ -176,8 +176,6 @@ class DbusTeslaAPIService:
 
     checkDiff = datetime.now() - self._lastCheckData
     checkSecs = checkDiff.total_seconds()
-
-    self._showInfoMessage(f"Wait Seconds - {self._wait_seconds}")
 
     if checkSecs > self._wait_seconds:
        response = requests.get(url = URL, headers=headers)
