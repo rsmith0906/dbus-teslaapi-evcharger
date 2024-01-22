@@ -256,12 +256,11 @@ class DbusTeslaAPIService:
             if phase == inverter_phase:
               current = car_data['response']['charge_state']['charge_amps']
               voltage = car_data['response']['charge_state']['charger_voltage']
+              power = car_data['response']['charge_state']['charger_power']
               charge_state = car_data['response']['charge_state']['charging_state']
               charge_port_latch = car_data['response']['charge_state']['charge_port_latch']
               charge_energy_added = car_data['response']['charge_state']['charge_energy_added']
-
-              power = voltage * current
-
+              
               self._dbusserviceev['/Current'] = current
               self._dbusserviceev['/Ac/Power'] = power
               self._dbusserviceev[pre + '/Power'] = power
@@ -269,7 +268,7 @@ class DbusTeslaAPIService:
 
               charging = False
 
-              if charge_state == 'Stopped':
+              if charge_state == 'Stopped' | charging_state == 'Complete':
                   if charge_port_latch == 'Engaged':
                     self._dbusserviceev['/Status'] = 1
                   else:
