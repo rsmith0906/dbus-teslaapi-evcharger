@@ -252,6 +252,8 @@ class DbusTeslaAPIService:
 
           self._showInfoMessage('Car Awake')
 
+          charging = False
+
           #send data to DBus
           for phase in ['L1']:
             pre = '/Ac/' + phase
@@ -266,8 +268,6 @@ class DbusTeslaAPIService:
               
               self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
 
-              charging = False
-
               if charge_state == 'Stopped' or charging_state == 'Complete':
                   if charge_port_latch == 'Engaged':
                     self._dbusserviceev['/Status'] = 1
@@ -280,27 +280,24 @@ class DbusTeslaAPIService:
                   self._dbusserviceev['/Current'] = current
                   self._dbusserviceev['/Ac/Power'] = power
                   self._dbusserviceev[pre + '/Power'] = power
+
+                  if not self._running:
+                     self._startDate = datetime.now()
+                     self._running = True
+
+                  delta = datetime.now() - self._startDate
+                  self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
+                  charging = True
               else:
                   self._dbusserviceev['/Status'] = 10
-                  charging = True
-
-              if power > 0:
-                if not self._running:
-                    self._startDate = datetime.now()
-                    self._running = True
-
-                if charging:
-                    delta = datetime.now() - self._startDate
-                    self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
-              else:
-                self._startDate = datetime.now()
-                self._dbusserviceev['/ChargingTime'] = 0
-                self._running = False
-
             else:
+              self._dbusserviceev['/Status'] = 0
+
+          if not charging:
               self._dbusserviceev['/Ac/Power'] = 0
               self._dbusserviceev[pre + '/Power'] = 0
-              self._dbusserviceev['/Status'] = 0
+              self._dbusserviceev['/Current'] = 0
+              self._running = False
 
           self._dbusserviceev['/Ac/L1/Power'] = self._dbusserviceev['/Ac/' + inverter_phase + '/Power']
 
