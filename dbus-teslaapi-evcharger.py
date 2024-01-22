@@ -114,7 +114,7 @@ class DbusTeslaAPIService:
 
       logging.info('Start Get Serial')
 
-      vin = os.environ.get(f"VIN_{car_id}")
+      vin = os.environ.get(f"TESLAVIN")
       if self.is_not_blank(vin):
          logging.info(f"return cached vin {vin}")
          return vin
@@ -129,7 +129,7 @@ class DbusTeslaAPIService:
 
       logging.info('Start Get Version')
 
-      version = os.environ.get(f"VERSION_{car_id}")
+      version = os.environ.get(f"TESLAVERSION")
       if self.is_not_blank(version):
          logging.info(f"return cached version {version}")
          return version
@@ -183,11 +183,11 @@ class DbusTeslaAPIService:
        
        vin = self._carData['response']['vin']
        logging.info(vin)
-       os.environ[f"VIN_{car_id}"] = vin
+       os.environ[f"TESLAVIN"] = vin
         
        version = self._carData['response']['vehicle_state']['car_version']
        logging.info(version)
-       os.environ[f"VERSION_{car_id}"] = version
+       os.environ[f"TESLAVERSION"] = version
 
        return self._carData
     else:

@@ -17,6 +17,8 @@
         "ownerapi",
         "productname",
         "systemcalc",
+        "TESLAVERSION",
+        "TESLAVIN",
         "textformat",
         "Victron",
         "victronenergy"
