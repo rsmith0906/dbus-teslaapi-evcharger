@@ -120,11 +120,13 @@ class DbusTeslaAPIService:
          return carVin
         
       car_data = self._getTeslaAPIData()
-      vin = car_data['response']['vin']
+      if car_data:
+        vin = car_data['response']['vin']
+        os.environ[f"vin_{car_id}"] = vin
       if not vin:
-          vin = 0
-      os.environ[f"vin_{car_id}"] = vin
+        vin = 0
       return str(vin)
+    
     except Exception as e:
       error_message = str(e)
       specific_string = "Request Timeout"
@@ -141,10 +143,11 @@ class DbusTeslaAPIService:
          return version
 
       car_data = self._getTeslaAPIData()
-      version = car_data['response']['vehicle_state']['car_version']
+      if car_data:
+        version = car_data['response']['vehicle_state']['car_version']
+        os.environ[f"version_{car_id}"] = version
       if not version:
           version = 0
-      os.environ[f"version_{car_id}"] = version
       return str(version)
     except Exception as e:
       error_message = str(e)
@@ -268,7 +271,7 @@ class DbusTeslaAPIService:
 
               charging = False
 
-              if charge_state == 'Stopped' | charging_state == 'Complete':
+              if charge_state == 'Stopped' or charging_state == 'Complete':
                   if charge_port_latch == 'Engaged':
                     self._dbusserviceev['/Status'] = 1
                   else:
