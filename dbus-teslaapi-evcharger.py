@@ -107,18 +107,24 @@ class DbusTeslaAPIService:
     return int(value)
 
   def _getTeslaAPISerial(self):
-    car_data = self._getTeslaAPIData()
-    vin = car_data['response']['vin']
-    if not vin:
-        vin = 0
-    return str(vin)
+    try:
+      car_data = self._getTeslaAPIData()
+      vin = car_data['response']['vin']
+      if not vin:
+          vin = 0
+      return str(vin)
+    except Exception as e:
+      logging.critical('Error at %s', '_update', exc_info=e)
 
   def _getTeslaAPIVersion(self):
-    car_data = self._getTeslaAPIData()
-    version = car_data['response']['vehicle_state']['car_version']
-    if not version:
-        version = 0
-    return str(version)
+    try:
+      car_data = self._getTeslaAPIData()
+      version = car_data['response']['vehicle_state']['car_version']
+      if not version:
+          version = 0
+      return str(version)
+    except Exception as e:
+      logging.critical('Error at %s', '_update', exc_info=e)
 
   def _getTeslaAPIStatusUrl(self):
     config = self._getConfig()
@@ -147,6 +153,8 @@ class DbusTeslaAPIService:
 
     if checkSecs > 10:
        response = requests.get(url = URL, headers=headers)
+       response.raise_for_status()
+
        # check for response
        if not response:
           raise ConnectionError("No response from TeslaAPI - %s" % (URL))
