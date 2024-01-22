@@ -135,6 +135,8 @@ class DbusTeslaAPIService:
     if not self._token:
         raise ValueError("Could not retrieve Tesla Token")
 
+    logging.info(self._token)
+
     headers = {
         'Authorization': f'Bearer {self._token}'
     }
@@ -186,8 +188,6 @@ class DbusTeslaAPIService:
     refreshToken = response["refresh_token"]
     expiresIn = response["expires_in"]
     tokenType = response["token_type"]
-  
-    logging.info(accessToken)
 
     return accessToken
 
