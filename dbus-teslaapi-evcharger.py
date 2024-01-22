@@ -294,7 +294,7 @@ class DbusTeslaAPIService:
       if self._request_timeout_string in error_message:
         self._dbusserviceev['/Status'] = "Car Sleeping"
         self._wait_seconds = 60
-      if self._too_many_requests in error_message:
+      elif self._too_many_requests in error_message:
         self._dbusserviceev['/Status'] = "Too Many Requests"
         self._lastCheckData = datetime.now()
         self._wait_seconds = self._wait_seconds + 10
