@@ -112,7 +112,8 @@ class DbusTeslaAPIService:
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
       car_data = self.read_data(car_id)
-      vin = car_data['response']['vin']
+      if (car_data):
+        vin = car_data['response']['vin']
 
       if self.is_not_blank(vin):
          logging.info(f"return cached vin {vin}")
@@ -126,7 +127,8 @@ class DbusTeslaAPIService:
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
       car_data = self.read_data(car_id)
-      version = car_data['response']['vehicle_state']['car_version']
+      if (car_data):
+        version = car_data['response']['vehicle_state']['car_version']
 
       if self.is_not_blank(version):
          logging.info(f"return cached version {version}")
@@ -357,7 +359,11 @@ class DbusTeslaAPIService:
     file.close() 
 
   def read_data(self, key):
-    return json.load(f"{key}.json") 
+    if os.path.exists(f"{key}.json"):
+      with open(f"{key}.json", 'r') as file:
+        return json.load(file)
+    else:
+       return None
 
 def main():
   #configure logging
