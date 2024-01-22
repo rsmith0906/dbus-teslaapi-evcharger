@@ -364,7 +364,7 @@ class DbusTeslaAPIService:
 
   def read_data(self, key):
     if os.path.exists(f"/tmp/{key}.json"):
-      with open(f"{key}.json", 'r') as file:
+      with open(f"/tmp/{key}.json", 'r') as file:
         return json.load(file)
     else:
        return None
