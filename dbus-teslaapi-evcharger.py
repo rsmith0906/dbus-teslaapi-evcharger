@@ -185,11 +185,7 @@ class DbusTeslaAPIService:
        if not self._carData:
           raise ValueError("Converting response to JSON failed")
        
-       vin = self._carData['response']['vin']
        self.save_data(car_id, json.dumps(self._carData))
-        
-       version = self._carData['response']['vehicle_state']['car_version']
-
        return self._carData
     else:
        return None
@@ -365,11 +361,14 @@ class DbusTeslaAPIService:
     file.close() 
 
   def read_data(self, key):
-    if os.path.exists(f"/tmp/{key}.json"):
-      with open(f"{key}.json", 'r') as file:
-        return json.load(file)
-    else:
-       return None
+    try:
+      if os.path.exists(f"/tmp/{key}.json"):
+        with open(f"{key}.json", 'r') as file:
+          return json.load(file)
+      else:
+        return None
+    except Exception as e:
+      return None
 
 def main():
   #configure logging
