@@ -49,6 +49,7 @@ class DbusTeslaAPIService:
     self._request_timeout_string = "Request Timeout"
     self._too_many_requests = "Too Many Requests"
     self._wait_seconds = 10
+    self._lastMessage = ""
 
     self.add_standard_paths(self._dbusserviceev, productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
@@ -292,11 +293,13 @@ class DbusTeslaAPIService:
       if self._request_timeout_string in error_message:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "Car Sleeping"
+        self._showInfoMessage('Car Sleeping')
         self._wait_seconds = 60
       elif self._too_many_requests in error_message:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "Too Many Requests"
         self._lastCheckData = datetime.now()
+        self._showInfoMessage('Too Many Requests')
         self._wait_seconds = self._wait_seconds + 10
       else:
         self._wait_seconds = 60
@@ -306,6 +309,11 @@ class DbusTeslaAPIService:
       
     # return true, otherwise add_timeout will be removed from GObject - see docs http://library.isr.ist.utl.pt/docs/pygtk2reference/gobject-functions.html#function-gobject--timeout-add
     return True
+
+  def _showInfoMessage(self, message):
+    if not self._lastMessage == message:
+      logging.info(message)
+      self._lastMessage = message
 
   def _handlechangedvalue(self, path, value):
     logging.debug("someone else updated %s to %s" % (path, value))
