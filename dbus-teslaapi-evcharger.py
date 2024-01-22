@@ -241,6 +241,8 @@ class DbusTeslaAPIService:
        config = self._getConfig()
        str(config['DEFAULT']['Phase'])
 
+       charging = False
+
        #get data from TeslaAPI Plug
        car_data = self._getTeslaAPIData()
        if car_data:
@@ -251,8 +253,7 @@ class DbusTeslaAPIService:
              raise ValueError("NoPower")
 
           self._showInfoMessage('Car Awake')
-
-          charging = False
+          self._wait_seconds = 10
 
           #send data to DBus
           for phase in ['L1']:
@@ -265,8 +266,10 @@ class DbusTeslaAPIService:
               charge_state = car_data['response']['charge_state']['charging_state']
               charge_port_latch = car_data['response']['charge_state']['charge_port_latch']
               charge_energy_added = car_data['response']['charge_state']['charge_energy_added']
+              max_current = car_data['response']['charge_state']['charge_current_request_max']
               
               self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
+              self._dbusserviceev['/MaxCurrent'] = max_current
 
               if charge_state == 'Stopped' or charging_state == 'Complete':
                   if charge_port_latch == 'Engaged':
@@ -299,14 +302,16 @@ class DbusTeslaAPIService:
               self._dbusserviceev['/Current'] = 0
               self._running = False
 
-          self._dbusserviceev['/Ac/L1/Power'] = self._dbusserviceev['/Ac/' + inverter_phase + '/Power']
+          #self._dbusserviceev['/Ac/L1/Power'] = self._dbusserviceev['/Ac/' + inverter_phase + '/Power']
 
           #logging
           logging.debug("Inverter Consumption (/Ac/L1/Power): %s" % (self._dbusserviceev['/Ac/L1/Power']))
           logging.debug("---");
-
-          #update last update vars
-          self._wait_seconds = 10
+       
+       else:
+         if charging:
+           delta = datetime.now() - self._startDate
+           self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
     except Exception as e:
       error_message = str(e)
       if self._request_timeout_string in error_message:
@@ -319,7 +324,7 @@ class DbusTeslaAPIService:
         self._dbusserviceev['/Mode'] = "Too Many Requests"
         self._lastCheckData = datetime.now()
         self._showInfoMessage('Too Many Requests')
-        self._wait_seconds = self._wait_seconds + 10
+        self._wait_seconds = self._wait_seconds + 30
       elif "NoPower" in error_message:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "No Power to Charger"
