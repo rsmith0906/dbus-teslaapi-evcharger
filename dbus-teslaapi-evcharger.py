@@ -239,6 +239,8 @@ class DbusTeslaAPIService:
        if self.is_time_between_midnight_and_8am():
           self._wait_seconds = 60 * 10
 
+       car_id = config['DEFAULT']['VehicleId']
+
        #get data from TeslaAPI Plug
        car_data = self._getTeslaAPIData()
        if car_data:
@@ -262,6 +264,9 @@ class DbusTeslaAPIService:
               charge_port_latch = car_data['response']['charge_state']['charge_port_latch']
               charge_energy_added = car_data['response']['charge_state']['charge_energy_added']
               max_current = car_data['response']['charge_state']['charge_current_request_max']
+
+              if int(charge_energy_added) == 0:
+                 self.resetSavedChargeStart()
               
               self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
               self._dbusserviceev['/MaxCurrent'] = max_current
@@ -280,12 +285,9 @@ class DbusTeslaAPIService:
                   self._dbusserviceev['/Ac/Power'] = power
                   self._dbusserviceev[pre + '/Power'] = power
                   self._wait_seconds = 15
+                  self._running = True
 
-                  if not self._running:
-                     self._startDate = datetime.now()
-                     self._running = True
-
-                  delta = datetime.now() - self._startDate
+                  delta = self.getSavedChargeStart() - self._startDate
                   self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
                   charging = True
               else:
@@ -372,6 +374,29 @@ class DbusTeslaAPIService:
         return None
     except Exception as e:
       return None
+    
+  def getCurrentDateAsLong(self):
+    now = datetime.now()
+    timestamp = now.timestamp()
+    timestamp_as_long = int(timestamp)
+    return timestamp_as_long
+  
+  def resetSavedChargeStart(self):
+      config = self._getConfig()
+      car_id = config['DEFAULT']['VehicleId']
+      self.save_data(f"{car_id}-chargeStartTime", f"{{ \"ChargingStartTime\": \"{self.getCurrentDateAsLong()}\" }}")
+
+  def getSavedChargeStart(self):
+      config = self._getConfig()
+      car_id = config['DEFAULT']['VehicleId']
+      charge_data = self.read_data(f"{car_id}-chargeStartTime")
+      if charge_data:
+        return datetime.fromtimestamp(charge_data['ChargingStartTime'])
+      else:
+        return datetime.now()
+  
+  def getDateFromLong(self, long):
+    return datetime.fromtimestamp(long)
     
   def is_time_between_midnight_and_8am():
       # Get the current time
