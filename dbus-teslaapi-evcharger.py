@@ -12,6 +12,7 @@ else:
     from gi.repository import GLib as gobject
 import sys
 import time
+import json
 import requests # for http GET
 import configparser # for config/ini file
 
@@ -43,6 +44,7 @@ class DbusTeslaAPIService:
     self._lastCheck = datetime(2023, 12, 8)
     self._running = False
     self._carData = {}
+    self._token = None
 
     self.add_standard_paths(self._dbusserviceev, productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
@@ -126,10 +128,12 @@ class DbusTeslaAPIService:
   def _getTeslaAPIData(self):
     config = self._getConfig()
     URL = self._getTeslaAPIStatusUrl()
-    token = config['DEFAULT']['Token']
+
+    if not self._token:
+       self._token = self._getAccessToken()
 
     headers = {
-        'Authorization': f'Bearer {token}'
+        'Authorization': f'Bearer {self._token}'
     }
 
     checkDiff = datetime.now() - self._lastCheck
@@ -149,6 +153,38 @@ class DbusTeslaAPIService:
     
     return self._carData
 
+  def _getAccessToken(self):
+    config = self._getConfig()
+    refreshToken = config['DEFAULT']['RefreshToken']
+
+    URL = 'https://auth.tesla.com/oauth2/v3/token'
+
+    body = {
+      'grant_type': 'refresh_token',
+      'client_id': 'ownerapi',
+      'refresh_token': refreshToken,
+      'scope': 'openid email offline_access'
+    }
+
+    json_data = json.dumps(body)
+    response = requests.post(url = URL, data=json_data, headers={'Content-Type': 'application/json'})
+
+    # check for response
+    if not response:
+        raise ConnectionError("No response from Shelly Plug - %s" % (URL))
+
+    response = device_info.json()
+
+    # check for Json
+    if not response:
+        raise ValueError("Converting response to JSON failed")
+
+    accessToken = response["access_token"]
+    refreshToken = response["refresh_token"]
+    expiresIn = response["expires_in"]
+    tokenType = response["token_type"]
+  
+    return accessToken
 
   def _signOfLife(self):
     logging.info("--- Start: sign of life ---")
@@ -198,18 +234,6 @@ class DbusTeslaAPIService:
               charging = True
 
            if power > 0:
-             #if voltage > 120:
-             #   self._dbusservicegrid['/Ac/Power'] = power
-             #   self._dbusservicegrid['/Ac/L1/Voltage'] = 120
-             #   self._dbusservicegrid['/Ac/L1/Current'] = int(current) / 2
-             #   self._dbusservicegrid['/Ac/L1/Power'] = int(power) / 2
-             #   self._dbusservicegrid['/Ac/L2/Voltage'] = 120
-             #   self._dbusservicegrid['/Ac/L2/Current'] = int(current) / 2
-             #   self._dbusservicegrid['/Ac/L2/Power'] = int(power) / 2
-             #else:
-                #self._dbusservicegrid['/Ac/L1/Voltage'] = 120
-                #self._dbusservicegrid['/Ac/L2/Voltage'] = 0
-
              if not self._running:
                 self._startDate = datetime.now()
                 self._running = True
@@ -243,6 +267,7 @@ class DbusTeslaAPIService:
        self._lastUpdate = time.time()
     except Exception as e:
        self._dbusserviceev['/Status'] = 10
+       self._token = self._getAccessToken()
        logging.critical('Error at %s', '_update', exc_info=e)
 
     # return true, otherwise add_timeout will be removed from GObject - see docs http://library.isr.ist.utl.pt/docs/pygtk2reference/gobject-functions.html#function-gobject--timeout-add
