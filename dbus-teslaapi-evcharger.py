@@ -115,9 +115,9 @@ class DbusTeslaAPIService:
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
 
-      carVin = os.environ.get(f"vin_{car_id}")
-      if self.is_not_blank(carVin):
-         return carVin
+      vin = os.environ.get(f"vin_{car_id}")
+      if self.is_not_blank(vin):
+         return vin
         
       car_data = self._getTeslaAPIData()
       if car_data:
