@@ -122,7 +122,9 @@ class DbusTeslaAPIService:
       car_data = self._getTeslaAPIData()
       if car_data:
         vin = car_data['response']['vin']
+        logging.info(vin)
         os.environ[f"vin_{car_id}"] = vin
+        logging.info(os.environ.get(f"vin_{car_id}"))
       if not vin:
         vin = 0
       return str(vin)
@@ -145,7 +147,9 @@ class DbusTeslaAPIService:
       car_data = self._getTeslaAPIData()
       if car_data:
         version = car_data['response']['vehicle_state']['car_version']
+        logging.info(version)
         os.environ[f"version_{car_id}"] = version
+        logging.info(os.environ.get(f"version_{car_id}"))
       if not version:
           version = 0
       return str(version)
