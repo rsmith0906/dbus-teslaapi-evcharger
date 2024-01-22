@@ -279,12 +279,6 @@ class DbusTeslaAPIService:
           logging.debug("Inverter Consumption (/Ac/L1/Power): %s" % (self._dbusserviceev['/Ac/L1/Power']))
           logging.debug("---");
 
-          # increment UpdateIndex - to show that new data is available
-          index = self._dbusserviceev['/UpdateIndex'] + 1  # increment index
-          if index > 255:   # maximum value of the index
-            index = 0       # overflow from 255 to 0
-          self._dbusserviceev['/UpdateIndex'] = index
-
           #update last update vars
           self._lastUpdate = time.time()
           self._wait_seconds = 10
@@ -307,8 +301,17 @@ class DbusTeslaAPIService:
         self._token = self._getAccessToken()
         logging.critical('Error at %s', '_update', exc_info=e)
       
+    self._signalChanges()
+
     # return true, otherwise add_timeout will be removed from GObject - see docs http://library.isr.ist.utl.pt/docs/pygtk2reference/gobject-functions.html#function-gobject--timeout-add
     return True
+
+  def _signalChanges(self):
+    # increment UpdateIndex - to show that new data is available
+    index = self._dbusserviceev['/UpdateIndex'] + 1  # increment index
+    if index > 255:   # maximum value of the index
+      index = 0       # overflow from 255 to 0
+    self._dbusserviceev['/UpdateIndex'] = index
 
   def _showInfoMessage(self, message):
     if not self._lastMessage == message:
