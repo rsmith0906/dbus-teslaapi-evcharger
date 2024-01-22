@@ -227,7 +227,7 @@ class DbusTeslaAPIService:
 
           charging_state = car_data['response']['charge_state']['charging_state']
           if charging_state == "NoPower":
-             raise ValueError("Charger has No Power")
+             raise ValueError("NoPower")
 
           self._showInfoMessage('Car Awake')
 
@@ -301,7 +301,7 @@ class DbusTeslaAPIService:
         self._lastCheckData = datetime.now()
         self._showInfoMessage('Too Many Requests')
         self._wait_seconds = self._wait_seconds + 10
-      elif self._too_many_requests in error_message:
+      elif "NoPower" in error_message:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "No Power to Charger"
         self._lastCheckData = datetime.now()
