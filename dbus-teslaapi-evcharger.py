@@ -225,6 +225,12 @@ class DbusTeslaAPIService:
        if car_data:
           inverter_phase = str(config['DEFAULT']['Phase'])
 
+          charging_state = car_data['response']['charge_state']['charging_state']
+          if charging_state == "NoPower":
+             raise ValueError("Charger has No Power")
+
+          self._showInfoMessage('Car Awake')
+
           #send data to DBus
           for phase in ['L1']:
             pre = '/Ac/' + phase
@@ -295,6 +301,12 @@ class DbusTeslaAPIService:
         self._lastCheckData = datetime.now()
         self._showInfoMessage('Too Many Requests')
         self._wait_seconds = self._wait_seconds + 10
+      elif self._too_many_requests in error_message:
+        self._dbusserviceev['/Status'] = 0
+        self._dbusserviceev['/Mode'] = "No Power to Charger"
+        self._lastCheckData = datetime.now()
+        self._showInfoMessage('No Power to Charger')
+        self._wait_seconds = 60
       else:
         self._wait_seconds = 60
         self._dbusserviceev['/Status'] = 10
