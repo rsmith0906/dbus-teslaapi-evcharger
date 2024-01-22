@@ -236,6 +236,9 @@ class DbusTeslaAPIService:
 
        charging = False
 
+       if self.is_time_between_midnight_and_8am():
+          self._wait_seconds = 60 * 10
+
        #get data from TeslaAPI Plug
        car_data = self._getTeslaAPIData()
        if car_data:
@@ -369,6 +372,17 @@ class DbusTeslaAPIService:
         return None
     except Exception as e:
       return None
+    
+  def is_time_between_midnight_and_8am():
+      # Get the current time
+      current_time = datetime.now().time()
+
+      # Define the time for midnight and 8 AM
+      midnight = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
+      eight_am = current_time.replace(hour=8, minute=0, second=0, microsecond=0)
+
+      # Check if the current time is between midnight and 8 AM
+      return midnight <= current_time < eight_am
 
 def main():
   #configure logging
