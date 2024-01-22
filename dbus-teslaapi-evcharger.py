@@ -112,6 +112,8 @@ class DbusTeslaAPIService:
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
       car_data = self.read_data(car_id)
+      vin = 0
+
       if (car_data):
         vin = car_data['response']['vin']
 
@@ -127,6 +129,8 @@ class DbusTeslaAPIService:
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
       car_data = self.read_data(car_id)
+      version = 0
+
       if (car_data):
         version = car_data['response']['vehicle_state']['car_version']
 
@@ -182,7 +186,7 @@ class DbusTeslaAPIService:
           raise ValueError("Converting response to JSON failed")
        
        vin = self._carData['response']['vin']
-       self.save_data(car_id, self._carData)
+       self.save_data(car_id, json.dumps(self._carData))
         
        version = self._carData['response']['vehicle_state']['car_version']
 
@@ -354,12 +358,12 @@ class DbusTeslaAPIService:
       return bool(s and not s.isspace())
   
   def save_data(self, key, value):
-    file = open(f"{key}.json", 'w') 
+    file = open(f"/tmp/{key}.json", 'w') 
     file.write(value) 
     file.close() 
 
   def read_data(self, key):
-    if os.path.exists(f"{key}.json"):
+    if os.path.exists(f"/tmp/{key}.json"):
       with open(f"{key}.json", 'r') as file:
         return json.load(file)
     else:
