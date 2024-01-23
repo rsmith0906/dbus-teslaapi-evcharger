@@ -340,6 +340,7 @@ class DbusTeslaAPIService:
         self._wait_seconds = 60
         self._dbusserviceev['/Status'] = 10
         self._token = self._getAccessToken()
+        self._dbusserviceev['/Mode'] = "Check Logs for Error"
         logging.critical('Error at %s', '_update', exc_info=e)
       
     self._lastUpdate = time.time()
