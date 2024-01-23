@@ -53,6 +53,7 @@ class DbusTeslaAPIService:
     self._lastMessage = ""
     self._lastUpdate = 0
     self._cacheInverterPower = -1
+    self._cacheChargingPower = -1
 
     self.add_standard_paths(self._dbusserviceev, productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
@@ -238,7 +239,7 @@ class DbusTeslaAPIService:
 
        charging = False
 
-       if self.is_time_between_midnight_and_8am():
+       if self.is_time_between_midnight_and_8am() and self._dbusserviceev['/Ac/Power'] == 0:
           self._wait_seconds = 60 * 10
 
        inverterPower = self.getInverterPower()
@@ -323,18 +324,18 @@ class DbusTeslaAPIService:
       if self._request_timeout_string in error_message:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "Car Sleeping"
-        self._showInfoMessage('Car Sleeping')
         self._wait_seconds = 120
+        self._showInfoMessage('Car Sleeping')
       elif self._too_many_requests in error_message:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "Too Many Requests"
-        self._showInfoMessage('Too Many Requests')
         self._wait_seconds = self._wait_seconds + 30
+        self._showInfoMessage('Too Many Requests')
       elif "NoPower" in error_message:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "No Power to Charger"
-        self._showInfoMessage('No Power to Charger')
         self._wait_seconds = 120
+        self._showInfoMessage('No Power to Charger')
       else:
         self._wait_seconds = 60
         self._dbusserviceev['/Status'] = 10
@@ -389,7 +390,6 @@ class DbusTeslaAPIService:
     else:
        return 0
 
-    
   def getCurrentDateAsLong(self):
     now = datetime.now()
     timestamp = now.timestamp()
@@ -412,7 +412,8 @@ class DbusTeslaAPIService:
         return datetime.now()
     except Exception as e:
       return datetime.now()
-
+       
+  
   def getDateFromLong(self, long):
     return datetime.fromtimestamp(long)
     
