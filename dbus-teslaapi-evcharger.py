@@ -245,13 +245,13 @@ class DbusTeslaAPIService:
        inverterPower = self.getInverterPower()
 
        if inverterPower > 500:
-          self._lastCheckData = datetime(2023, 12, 8)
           self._wait_seconds = 10
 
        if abs(self._cacheInverterPower - inverterPower) >= 1.0:
           self._showInfoMessage(f"Inverter Power Level Changed: {inverterPower}")
           self._wait_seconds = 10
-          self._lastCheckData = datetime(2023, 12, 8)
+          if abs(self._cacheInverterPower - inverterPower) >= 400.0:
+             self._lastCheckData = datetime(2023, 12, 8)
           self._cacheInverterPower = inverterPower
 
        #get data from TeslaAPI Plug
