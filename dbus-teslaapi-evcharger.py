@@ -53,7 +53,7 @@ class DbusTeslaAPIService:
     self._wait_seconds = 10
     self._lastMessage = ""
     self._lastUpdate = 0
-    self._cacheInverterPower = -1
+    self._cacheInverterPower = Decimal(0.0)
     self._cacheChargingPower = -1
 
     self.add_standard_paths(self._dbusserviceev, productname, customname, connection, deviceinstance, config, {
@@ -249,7 +249,7 @@ class DbusTeslaAPIService:
           self._lastCheckData = datetime(2023, 12, 8)
           self._wait_seconds = 10
 
-       if not abs(self._cacheInverterPower - inverterPower) > 1:
+       if abs(self._cacheInverterPower - inverterPower) >= 1.0:
           self._showInfoMessage(f"Inverter Power Level Changed: {inverterPower}")
           self._wait_seconds = 10
           self._lastCheckData = datetime(2023, 12, 8)
@@ -389,7 +389,7 @@ class DbusTeslaAPIService:
     if inverter_data:
        return Decimal(inverter_data['Power'])
     else:
-       return 0
+       return Decimal(0.0)
 
   def get_time_in_timezone(utc_datetime, time_zone_offset_hours):
       return utc_datetime + timedelta(hours=time_zone_offset_hours)
