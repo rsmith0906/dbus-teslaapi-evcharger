@@ -239,7 +239,7 @@ class DbusTeslaAPIService:
 
        charging = False
 
-       if self.is_time_between_midnight_and_8am() and self._dbusserviceev['/Ac/Power'] == 0:
+       if self.is_time_between_midnight_and_8am() and not self._dbusserviceev['/Ac/Power'] > 0:
           self._wait_seconds = 60 * 10
 
        inverterPower = self.getInverterPower()
