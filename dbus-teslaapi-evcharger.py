@@ -402,14 +402,17 @@ class DbusTeslaAPIService:
       self.save_data(f"{car_id}-chargeStartTime", f"{{ \"ChargingStartTime\": \"{self.getCurrentDateAsLong()}\" }}")
 
   def getSavedChargeStart(self):
+    try:
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
       charge_data = self.read_data(f"{car_id}-chargeStartTime")
       if charge_data:
-        return datetime.fromtimestamp(charge_data['ChargingStartTime'])
+        return datetime.fromtimestamp(int(charge_data['ChargingStartTime']))
       else:
         return datetime.now()
-  
+    except Exception as e:
+      return datetime.now()
+
   def getDateFromLong(self, long):
     return datetime.fromtimestamp(long)
     
