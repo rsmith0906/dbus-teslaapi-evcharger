@@ -20,6 +20,7 @@ import configparser # for config/ini file
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), '/opt/victronenergy/dbus-systemcalc-py/ext/velib_python'))
 from vedbus import VeDbusService
 from datetime import datetime
+from decimal import Decimal
 
 class DbusTeslaAPIService:
   def __init__(self, productname='Tesla API', connection='Tesla API HTTP JSON service'):
@@ -241,10 +242,12 @@ class DbusTeslaAPIService:
           self._wait_seconds = 60 * 10
 
        inverterPower = self.getInverterPower()
+
        if inverterPower > 500:
+          logging.info(f"Inverter Power Level above 500: {inverterPower}")
           self._wait_seconds = 10
 
-       if not self._cacheInverterPower == inverterPower:
+       if not abs(self._cacheInverterPower - inverterPower) > 1:
           logging.info(f"Inverter Power Level Changed: {inverterPower}")
           self._wait_seconds = 10
           self._lastCheckData = datetime(2023, 12, 8)
@@ -371,17 +374,18 @@ class DbusTeslaAPIService:
   def read_data(self, key):
     try:
       if os.path.exists(f"/tmp/{key}.json"):
-        with open(f"{key}.json", 'r') as file:
+        with open(f"/tmp/{key}.json", 'r') as file:
           return json.load(file)
       else:
         return None
     except Exception as e:
+      logging.critical('Error at %s', '_update', exc_info=e)
       return None
   
   def getInverterPower(self):
     inverter_data = self.read_data("Inverter")
     if inverter_data:
-       return int(inverter_data['Power'])
+       return Decimal(inverter_data['Power'])
     else:
        return 0
 
