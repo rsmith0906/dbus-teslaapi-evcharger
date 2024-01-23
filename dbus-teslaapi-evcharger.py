@@ -420,7 +420,7 @@ class DbusTeslaAPIService:
   def getDateFromLong(self, long):
     return datetime.fromtimestamp(long)
 
-  def is_time_between_midnight_and_8am():
+  def is_time_between_midnight_and_8am(self):
       # Get the current time
       current_time = datetime.now().time()
 
