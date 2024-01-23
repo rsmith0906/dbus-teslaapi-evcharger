@@ -134,7 +134,7 @@ class DbusTeslaAPIService:
       self._carData = self.read_data(car_id)
       version = 0
 
-      if (self._car_data):
+      if self._car_data:
         version = self._carData['response']['vehicle_state']['car_version']
 
       if self.is_not_blank(version):
