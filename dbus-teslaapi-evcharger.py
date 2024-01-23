@@ -51,7 +51,7 @@ class DbusTeslaAPIService:
     self._wait_seconds = 10
     self._lastMessage = ""
     self._lastUpdate = 0
-    self._cacheInverterPower = 0
+    self._cacheInverterPower = -1
 
     self.add_standard_paths(self._dbusserviceev, productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
@@ -172,7 +172,7 @@ class DbusTeslaAPIService:
 
     if checkSecs > self._wait_seconds:
        self._lastCheckData = datetime.now()
-       logging.info(f"Last Get Tesla Data: {self._lastCheckData}")
+       logging.info(f"Last Get Tesla Data: {self._lastCheckData} - Wait in Seconds: {self._wait_seconds}")
 
        response = requests.get(url = URL, headers=headers)
        response.raise_for_status()
