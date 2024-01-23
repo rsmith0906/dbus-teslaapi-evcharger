@@ -11,7 +11,7 @@ if sys.version_info.major == 2:
 else:
     from gi.repository import GLib as gobject
 import sys
-#import time
+import time
 import json
 import requests # for http GET
 import configparser # for config/ini file
@@ -19,8 +19,7 @@ import configparser # for config/ini file
 # our own packages from victron
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), '/opt/victronenergy/dbus-systemcalc-py/ext/velib_python'))
 from vedbus import VeDbusService
-from datetime import datetime, timedelta, time
-import time as time_module
+from datetime import datetime
 from decimal import Decimal
 
 class DbusTeslaAPIService:
@@ -420,42 +419,17 @@ class DbusTeslaAPIService:
   
   def getDateFromLong(self, long):
     return datetime.fromtimestamp(long)
-    
-  def is_dst(self, dt=None, timezone="America/Chicago"):
-      """
-      Determine whether Daylight Saving Time (DST) is in effect for a given timezone.
-      Note: This is a simplified check and may not be accurate for historical dates.
-      """
-      if dt is None:
-          dt = datetime.now()
-      timestamp = dt.timestamp()
-      return time_module.localtime(timestamp).tm_isdst
 
-  def get_central_time(self):
-      """
-      Get the current time in Central US time zone, considering DST.
-      """
-      # Get the current UTC time
-      utc_time = datetime.utcnow()
+  def is_time_between_midnight_and_8am():
+      # Get the current time
+      current_time = datetime.now().time()
 
-      # Offset for Central Time (CST UTC-6, CDT UTC-5)
-      offset = -6 if not self.is_dst(utc_time) else -5
-
-      # Convert UTC to Central Time
-      central_time = utc_time + timedelta(hours=offset)
-
-      return central_time
-
-  def is_time_between_midnight_and_8am(self):
-      # Get the current time in Central US time zone
-      central_time = self.get_central_time()
-
-      # Define the time range
-      midnight = time(0, 0, 0)
-      eight_am = time(8, 0, 0)
+      # Define the time for midnight and 8 AM
+      midnight = current_time.replace(hour=6, minute=0, second=0, microsecond=0)
+      eight_am = current_time.replace(hour=14, minute=0, second=0, microsecond=0)
 
       # Check if the current time is between midnight and 8 AM
-      return midnight <= central_time.time() < eight_am
+      return midnight <= current_time < eight_am
 
 def main():
   #configure logging
