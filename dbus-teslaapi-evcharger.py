@@ -49,7 +49,7 @@ class DbusTeslaAPIService:
     self._token = None
     self._request_timeout_string = "Request Timeout"
     self._too_many_requests = "Too Many Requests"
-    self._wait_seconds = 10
+    self._wait_seconds = 30
     self._lastMessage = ""
     self._lastUpdate = 0
     self._cacheInverterPower = Decimal(0.0)
@@ -114,11 +114,11 @@ class DbusTeslaAPIService:
   def _getTeslaAPISerial(self):
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
-      car_data = self.read_data(car_id)
+      self._carData = self.read_data(car_id)
       vin = 0
 
-      if (car_data):
-        vin = car_data['response']['vin']
+      if (self._car_data):
+        vin = self._carData['response']['vin']
 
       if self.is_not_blank(vin):
          logging.info(f"return cached vin {vin}")
@@ -131,11 +131,11 @@ class DbusTeslaAPIService:
   def _getTeslaAPIVersion(self):
       config = self._getConfig()
       car_id = config['DEFAULT']['VehicleId']
-      car_data = self.read_data(car_id)
+      self._carData = self.read_data(car_id)
       version = 0
 
-      if (car_data):
-        version = car_data['response']['vehicle_state']['car_version']
+      if (self._car_data):
+        version = self._carData['response']['vehicle_state']['car_version']
 
       if self.is_not_blank(version):
          logging.info(f"return cached version {version}")
@@ -255,11 +255,11 @@ class DbusTeslaAPIService:
           self._cacheInverterPower = inverterPower
 
        #get data from TeslaAPI Plug
-       car_data = self._getTeslaAPIData()
-       if car_data:
+       self._carData = self._getTeslaAPIData()
+       if self._carData:
           inverter_phase = str(config['DEFAULT']['Phase'])
 
-          charging_state = car_data['response']['charge_state']['charging_state']
+          charging_state = self._carData['response']['charge_state']['charging_state']
           if charging_state == "NoPower":
              raise ValueError("NoPower")
 
@@ -270,13 +270,13 @@ class DbusTeslaAPIService:
             pre = '/Ac/' + phase
 
             if phase == inverter_phase:
-              current = car_data['response']['charge_state']['charger_actual_current']
-              voltage = car_data['response']['charge_state']['charger_voltage']
-              charger_power = car_data['response']['charge_state']['charger_power']
-              charge_state = car_data['response']['charge_state']['charging_state']
-              charge_port_latch = car_data['response']['charge_state']['charge_port_latch']
-              charge_energy_added = car_data['response']['charge_state']['charge_energy_added']
-              max_current = car_data['response']['charge_state']['charge_current_request_max']
+              current = self._carData['response']['charge_state']['charger_actual_current']
+              voltage = self._carData['response']['charge_state']['charger_voltage']
+              charger_power = self._carData['response']['charge_state']['charger_power']
+              charge_state = self._carData['response']['charge_state']['charging_state']
+              charge_port_latch = self._carData['response']['charge_state']['charge_port_latch']
+              charge_energy_added = self._carData['response']['charge_state']['charge_energy_added']
+              max_current = self._carData['response']['charge_state']['charge_current_request_max']
 
               if int(charge_energy_added) == 0:
                  self.resetSavedChargeStart()
@@ -290,7 +290,7 @@ class DbusTeslaAPIService:
                   else:
                     self._dbusserviceev['/Status'] = 0
                     self._dbusserviceev['/ChargingTime'] = 0
-                  self._wait_seconds = 60
+                  self._wait_seconds = 60 * 5
               elif charge_state == 'Charging':
                   power = voltage * current
                   self._dbusserviceev['/Status'] = 2
@@ -305,7 +305,7 @@ class DbusTeslaAPIService:
                   charging = True
               else:
                   self._dbusserviceev['/Status'] = 10
-                  self._wait_seconds = 60
+                  self._wait_seconds = 60 * 5
             else:
               self._dbusserviceev['/Status'] = 0
 
@@ -314,7 +314,12 @@ class DbusTeslaAPIService:
               self._dbusserviceev[pre + '/Power'] = 0
               self._dbusserviceev['/Current'] = 0
               self._running = False
-       
+
+          carDriving = self._getCarDriving()
+          if carDriving:
+             self._showInfoMessage('Car Driving')
+             self._wait_seconds = 60 * 60
+             
        else:
          if charging:
            delta = datetime.now() - self._startDate
@@ -324,7 +329,7 @@ class DbusTeslaAPIService:
       if self._request_timeout_string in error_message:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "Car Sleeping"
-        self._wait_seconds = 120
+        self._wait_seconds = 60 * 5
         self._showInfoMessage('Car Sleeping')
       elif self._too_many_requests in error_message:
         self._dbusserviceev['/Status'] = 0
@@ -334,10 +339,10 @@ class DbusTeslaAPIService:
       elif "NoPower" in error_message:
         self._dbusserviceev['/Status'] = 0
         self._dbusserviceev['/Mode'] = "No Power to Charger"
-        self._wait_seconds = 120
+        self._wait_seconds = 60 * 5
         self._showInfoMessage('No Power to Charger')
       else:
-        self._wait_seconds = 60
+        self._wait_seconds = 60 * 5
         self._dbusserviceev['/Status'] = 10
         self._token = self._getAccessToken()
         self._dbusserviceev['/Mode'] = "Check Logs for Error"
@@ -360,6 +365,17 @@ class DbusTeslaAPIService:
     if not self._lastMessage == message:
       logging.info(message)
       self._lastMessage = message
+
+  def _getCarDriving(self):
+    try:
+      carSpeed = self._carData['response']['drive_state']['speed']
+      shift_state = self._carData['response']['drive_state']['shift_state']
+      if carSpeed or shift_state:
+        return True
+      else:
+        return False
+    except Exception as e:
+       return False
 
   def _handlechangedvalue(self, path, value):
     logging.debug("someone else updated %s to %s" % (path, value))
@@ -390,9 +406,6 @@ class DbusTeslaAPIService:
        return Decimal(inverter_data['Power'])
     else:
        return Decimal(0.0)
-
-  def get_time_in_timezone(utc_datetime, time_zone_offset_hours):
-      return utc_datetime + timedelta(hours=time_zone_offset_hours)
 
   def getCurrentDateAsLong(self):
     now = datetime.now()
