@@ -298,7 +298,8 @@ class DbusTeslaAPIService:
                   self._dbusserviceev['/Current'] = current
                   self._dbusserviceev['/Ac/Power'] = power
                   self._dbusserviceev[pre + '/Power'] = power
-                  self._dbusserviceev["/Mode"] = battery_state + '%'
+                  self._dbusserviceev['/Mode'] = None
+                  self._dbusserviceev["/Mode"] = str(battery_state) + '%'
                   self._wait_seconds = 15
                   self._running = True
 
