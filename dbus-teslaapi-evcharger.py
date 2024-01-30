@@ -277,6 +277,7 @@ class DbusTeslaAPIService:
               charge_port_latch = self._carData['response']['charge_state']['charge_port_latch']
               charge_energy_added = self._carData['response']['charge_state']['charge_energy_added']
               max_current = self._carData['response']['charge_state']['charge_current_request_max']
+              battery_state = self._carData['response']['charge_state']['battery_level']
 
               if int(charge_energy_added) == 0:
                  self.resetSavedChargeStart()
@@ -297,6 +298,7 @@ class DbusTeslaAPIService:
                   self._dbusserviceev['/Current'] = current
                   self._dbusserviceev['/Ac/Power'] = power
                   self._dbusserviceev[pre + '/Power'] = power
+                  self._dbusserviceev["/Mode"] = battery_state + '%'
                   self._wait_seconds = 15
                   self._running = True
 
@@ -424,7 +426,8 @@ class DbusTeslaAPIService:
       car_id = config['DEFAULT']['VehicleId']
       charge_data = self.read_data(f"{car_id}-chargeStartTime")
       if charge_data:
-        return datetime.fromtimestamp(int(charge_data['ChargingStartTime']))
+        #return datetime.fromtimestamp(int(charge_data['ChargingStartTime']))
+        return datetime.now()
       else:
         return datetime.now()
     except Exception as e:
