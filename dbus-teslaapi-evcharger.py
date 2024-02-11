@@ -303,7 +303,7 @@ class DbusTeslaAPIService:
                   self._wait_seconds = 15
                   self._running = True
 
-                  delta = self.getSavedChargeStart() - self._startDate
+                  delta = datetime.now() - self.getSavedChargeStart()
                   self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
                   charging = True
               else:
@@ -323,10 +323,10 @@ class DbusTeslaAPIService:
              self._showInfoMessage('Car Driving')
              self._wait_seconds = 60 * 60
              
-       else:
-         if charging:
-           delta = datetime.now() - self._startDate
-           self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
+       #else:
+         #if charging:
+           #delta = datetime.now() - self._startDate
+           #self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
     except Exception as e:
       error_message = str(e)
       if self._request_timeout_string in error_message:
@@ -427,8 +427,7 @@ class DbusTeslaAPIService:
       car_id = config['DEFAULT']['VehicleId']
       charge_data = self.read_data(f"{car_id}-chargeStartTime")
       if charge_data:
-        #return datetime.fromtimestamp(int(charge_data['ChargingStartTime']))
-        return datetime.now()
+        return datetime.fromtimestamp(int(charge_data['ChargingStartTime']))
       else:
         return datetime.now()
     except Exception as e:
