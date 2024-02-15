@@ -304,7 +304,7 @@ class DbusTeslaAPIService:
                   self._wait_seconds = 15
                   self._running = True
 
-                  if (current > 15):
+                  if (current > 12):
                      self._dbusserviceev['/Position'] = 1
                   else:
                      self._dbusserviceev['/Position'] = 0
