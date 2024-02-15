@@ -291,6 +291,7 @@ class DbusTeslaAPIService:
                   else:
                     self._dbusserviceev['/Status'] = 0
                     self._dbusserviceev['/ChargingTime'] = 0
+                    self._dbusserviceev['/Position'] = 0
                   self._wait_seconds = 60 * 5
               elif charge_state == 'Charging':
                   power = voltage * current
@@ -303,19 +304,23 @@ class DbusTeslaAPIService:
                   self._wait_seconds = 15
                   self._running = True
 
+                  if (current > 15):
+                     self._dbusserviceev['/Position'] = 1
+                  else:
+                     self._dbusserviceev['/Position'] = 0
+
                   delta = datetime.now() - self.getSavedChargeStart()
                   self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
                   charging = True
               else:
                   self._dbusserviceev['/Status'] = 10
                   self._wait_seconds = 60 * 5
-            else:
-              self._dbusserviceev['/Status'] = 0
 
           if not charging:
               self._dbusserviceev['/Ac/Power'] = 0
               self._dbusserviceev[pre + '/Power'] = 0
               self._dbusserviceev['/Current'] = 0
+              self._dbusserviceev['/Position'] = 0
               self._running = False
 
           carDriving = self._getCarDriving()
