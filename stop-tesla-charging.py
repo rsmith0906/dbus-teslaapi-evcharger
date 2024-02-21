@@ -4,13 +4,15 @@ import requests
 import subprocess
 import time
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
 # Load configurations from config.json
-config_file_path = os.path.join(os.getcwd(), 'config.json')
+config_file_path = os.path.join(script_dir, 'config.json')
 with open(config_file_path, 'r') as config_file:
     config = json.load(config_file)
 
-authtoken_file_path = os.path.join(os.getcwd(), 'authtoken.txt')
-token_file_path = os.path.join(os.getcwd(), 'token.txt')
+authtoken_file_path = os.path.join(script_dir, 'authtoken.txt')
+token_file_path = os.path.join(script_dir, 'token.txt')
 
 # Setting environment variables
 os.environ['PATH'] += ':/usr/local/bin:/usr/bin:/bin:/data/usr/local/go/bin'
@@ -60,7 +62,11 @@ if auth_token:
 else:
     print("Auth token is empty. Token not saved.")
 
-# Simulating the tesla-control command with subprocess (requires tesla-control to be a recognized command)
-subprocess.call(['tesla-control', 'wake'])
-time.sleep(10)
-subprocess.call(['tesla-control', 'charging-stop'])
+try:
+    # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
+    subprocess.check_call(['tesla-control', 'wake'])
+    time.sleep(10)
+    subprocess.check_call(['tesla-control', 'charging-stop'])
+except subprocess.CalledProcessError as e:
+    # If a subprocess command fails, this block will be executed
+    raise RuntimeError(f"Subprocess command failed with exit status {e.returncode}") from e
