@@ -5,8 +5,12 @@ import subprocess
 import time
 
 # Load configurations from config.json
-with open('config.json', 'r') as config_file:
+config_file_path = os.path.join(os.getcwd(), 'config.json')
+with open(config_file_path, 'r') as config_file:
     config = json.load(config_file)
+
+authtoken_file_path = os.path.join(os.getcwd(), 'authtoken.txt')
+token_file_path = os.path.join(os.getcwd(), 'token.txt')
 
 # Setting environment variables
 os.environ['PATH'] += ':/usr/local/bin:/usr/bin:/bin:/data/usr/local/go/bin'
@@ -20,8 +24,7 @@ go_path_output = subprocess.check_output(['/data/usr/local/go/bin/go', 'env', 'G
 os.environ['PATH'] += f':{go_path_output}/bin'
 
 # Reading the refresh token from a json file
-json_file = "authtoken.txt"
-with open(json_file, 'r') as file:
+with open(authtoken_file_path, 'r') as file:
     data = json.load(file)
     refresh_token = data['refresh_token']
 
@@ -40,7 +43,7 @@ response_data = response.json()
 
 # Checking if the response contains 'refresh_token' and writing to authtoken.txt
 if 'refresh_token' in response_data:
-    with open('authtoken.txt', 'w') as file:
+    with open(authtoken_file_path, 'w') as file:
         json.dump(response_data, file, indent=4)
     print("New auth and refresh tokens saved to authtoken.txt.")
 else:
@@ -52,7 +55,7 @@ auth_token = response_data.get('access_token', '')
 # Saving the new auth token if it's not empty
 if auth_token:
     print("New auth token saved to token.txt.")
-    with open('/data/tesla/token.txt', 'w') as token_file:
+    with open(token_file_path, 'w') as token_file:
         token_file.write(auth_token)
 else:
     print("Auth token is empty. Token not saved.")
