@@ -1,5 +1,6 @@
 {
     "cSpell.words": [
+        "authtoken",
         "ccgx",
         "Dbus",
         "dbusconnection",
@@ -11,6 +12,7 @@
         "evcharger",
         "gettextcallback",
         "gobject",
+        "GOPATH",
         "handlechangedvalue",
         "Mgmt",
         "onchangecallback",
@@ -19,6 +21,7 @@
         "systemcalc",
         "TESLAVERSION",
         "TESLAVIN",
+        "Tessy",
         "textformat",
         "Victron",
         "victronenergy"
