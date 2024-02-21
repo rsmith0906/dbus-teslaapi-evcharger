@@ -25,48 +25,63 @@ os.environ['TESLA_TOKEN_FILE'] = '/data/tesla/token.txt'
 go_path_output = subprocess.check_output(['/data/usr/local/go/bin/go', 'env', 'GOPATH']).decode().strip()
 os.environ['PATH'] += f':{go_path_output}/bin'
 
-# Reading the refresh token from a json file
-with open(authtoken_file_path, 'r') as file:
-    data = json.load(file)
-    refresh_token = data['refresh_token']
+def get_new_token():
+    # Reading the refresh token from a json file
+    with open(authtoken_file_path, 'r') as file:
+        data = json.load(file)
+        refresh_token = data['refresh_token']
 
-# Making a POST request to get a new auth token
-url = 'https://auth.tesla.com/oauth2/v3/token'
-headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-data = {
-    'grant_type': 'refresh_token',
-    'client_id': config['CLIENT_ID'],
-    'refresh_token': refresh_token,
-    'scopes': 'user_data vehicle_device_data vehicle_cmds vehicle_charging_cmds'
-}
+    # Making a POST request to get a new auth token
+    url = 'https://auth.tesla.com/oauth2/v3/token'
+    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    data = {
+        'grant_type': 'refresh_token',
+        'client_id': config['CLIENT_ID'],
+        'refresh_token': refresh_token,
+        'scopes': 'user_data vehicle_device_data vehicle_cmds vehicle_charging_cmds'
+    }
 
-response = requests.post(url, headers=headers, data=data)
-response_data = response.json()
+    response = requests.post(url, headers=headers, data=data)
+    response_data = response.json()
 
-# Checking if the response contains 'refresh_token' and writing to authtoken.txt
-if 'refresh_token' in response_data:
-    with open(authtoken_file_path, 'w') as file:
-        json.dump(response_data, file, indent=4)
-    print("New auth and refresh tokens saved to authtoken.txt.")
-else:
-    print("Response does not contain a refresh token.")
+    # Checking if the response contains 'refresh_token' and writing to authtoken.txt
+    if 'refresh_token' in response_data:
+        with open(authtoken_file_path, 'w') as file:
+            json.dump(response_data, file, indent=4)
+        print("New auth and refresh tokens saved to authtoken.txt.")
+    else:
+        print("Response does not contain a refresh token.")
 
-# Extracting the access token, if available
-auth_token = response_data.get('access_token', '')
+    # Extracting the access token, if available
+    auth_token = response_data.get('access_token', '')
 
-# Saving the new auth token if it's not empty
-if auth_token:
-    print("New auth token saved to token.txt.")
-    with open(token_file_path, 'w') as token_file:
-        token_file.write(auth_token)
-else:
-    print("Auth token is empty. Token not saved.")
+    # Saving the new auth token if it's not empty
+    if auth_token:
+        print("New auth token saved to token.txt.")
+        with open(token_file_path, 'w') as token_file:
+            token_file.write(auth_token)
+    else:
+        print("Auth token is empty. Token not saved.")
 
-try:
-    # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
-    subprocess.check_call(['tesla-control', 'wake'])
-    time.sleep(10)
-    subprocess.check_call(['tesla-control', 'charging-stop'])
-except subprocess.CalledProcessError as e:
-    # If a subprocess command fails, this block will be executed
-    raise RuntimeError(f"Subprocess command failed with exit status {e.returncode}") from e
+attempt = 0
+max_attempts = 2
+
+while attempt < max_attempts:
+    try:
+        # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
+        result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
+        time.sleep(10)
+        result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
+        break  # Exit loop if successful
+    except subprocess.CalledProcessError as e:
+            # Check if the error output contains 'token'
+            error_output = e.stderr.decode('utf-8')
+            if 'token' in error_output.lower():
+                print("Token error detected, attempting to refresh token.")
+                get_new_token()
+                attempt += 1
+                if attempt >= max_attempts:
+                    raise RuntimeError(f"Failed to resolve token issue after multiple attempts: {error_output}") from e
+            else:
+                # If error is not related to token, re-raise with original error message
+                raise RuntimeError(f"Subprocess command failed: {error_output}") from e
