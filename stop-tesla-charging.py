@@ -69,9 +69,10 @@ class DbusTeslaAPIService:
             except subprocess.CalledProcessError as e:
                 # Check if the error output contains 'token'
                 logging.critical('Error at %s', 'main', exc_info=e)
-                push = pb.push_note("Tesla Charging Rate Error", e)
-
+                
                 error_output = e.stderr.decode('utf-8')
+                push = pb.push_note(f"Tesla Charging Rate Error", error_output)
+
                 if 'token' in error_output.lower():
                     print("Token error detected, attempting to refresh token.")
                     self.get_new_token()
