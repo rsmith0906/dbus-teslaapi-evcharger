@@ -88,6 +88,7 @@ def get_token_is_expired():
         expiration_date = expire_file.read()
         expiration_date = time.mktime(time.strptime(expiration_date, '%Y-%m-%d %H:%M:%S'))
         if (expiration_date < time.time()):
+            print("Auth token is expired.")
             return True
     return False
 
