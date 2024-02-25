@@ -36,12 +36,15 @@ os.environ['TESLA_TOKEN_FILE'] = '/data/tesla/token.txt'
 go_path_output = subprocess.check_output(['/data/usr/local/go/bin/go', 'env', 'GOPATH']).decode().strip()
 os.environ['PATH'] += f':{go_path_output}/bin'
 
-pbApiKey = config['DEFAULT']['PushBulletKey']
-pb = Pushbullet(pbApiKey)
+pb = None
 
 class DbusTeslaAPIService:
   def __init__(self, productname='Tesla API', connection='Tesla API HTTP JSON service'):
     config = self._getConfig()
+    global pb
+
+    pbApiKey = config['DEFAULT']['PushBulletKey']
+    pb = Pushbullet(pbApiKey)
 
   def get_new_token():
     # Reading the refresh token from a json file
