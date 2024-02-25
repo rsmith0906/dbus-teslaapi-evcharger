@@ -36,15 +36,51 @@ os.environ['TESLA_TOKEN_FILE'] = '/data/tesla/token.txt'
 go_path_output = subprocess.check_output(['/data/usr/local/go/bin/go', 'env', 'GOPATH']).decode().strip()
 os.environ['PATH'] += f':{go_path_output}/bin'
 
-pb = None
-
 class DbusTeslaAPIService:
+  pb = None
+
   def __init__(self, productname='Tesla API', connection='Tesla API HTTP JSON service'):
     config = self._getConfig()
     global pb
 
     pbApiKey = config['DEFAULT']['PushBulletKey']
     pb = Pushbullet(pbApiKey)
+
+  def run(self):
+    try:
+        logging.info("Start")
+
+        attempt = 0
+        max_attempts = 2
+
+        while attempt < max_attempts:
+            try:
+
+                if self.get_token_is_expired():
+                    self.get_new_token()
+
+                # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
+                command = f"charging-set-amps"
+                result = subprocess.run(['tesla-control', command, amps], check=True, stderr=subprocess.PIPE)
+                break  # Exit loop if successful
+            except subprocess.CalledProcessError as e:
+                # Check if the error output contains 'token'
+                logging.critical('Error at %s', 'main', exc_info=e)
+                push = pb.push_note("Tesla Charging Rate Error", e)
+
+                error_output = e.stderr.decode('utf-8')
+                if 'token' in error_output.lower():
+                    print("Token error detected, attempting to refresh token.")
+                    self.get_new_token()
+                    attempt += 1
+                    if attempt >= max_attempts:
+                        raise RuntimeError(f"Failed to resolve token issue after multiple attempts: {error_output}") from e
+                else:
+                    # If error is not related to token, re-raise with original error message
+                    raise RuntimeError(f"Subprocess command failed: {error_output}") from e
+
+    except Exception as e:
+        logging.critical('Error at %s', 'main', exc_info=e)
 
   def get_new_token(self):
     # Reading the refresh token from a json file
@@ -115,48 +151,8 @@ def main():
                                     logging.StreamHandler()
                             ])
 
-    try:
-        logging.info("Start")
-
-        attempt = 0
-        max_attempts = 2
-
-        logging.basicConfig(      format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                                datefmt='%Y-%m-%d %H:%M:%S',
-                                level=logging.INFO,
-                                handlers=[
-                                    logging.FileHandler("%s/current.log" % (os.path.dirname(os.path.realpath(__file__)))),
-                                    logging.StreamHandler()
-                                ])
-
-        while attempt < max_attempts:
-            try:
-
-                if self.get_token_is_expired():
-                    self.get_new_token()
-
-                # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
-                command = f"charging-set-amps"
-                result = subprocess.run(['tesla-control', command, amps], check=True, stderr=subprocess.PIPE)
-                break  # Exit loop if successful
-            except subprocess.CalledProcessError as e:
-                # Check if the error output contains 'token'
-                logging.critical('Error at %s', 'main', exc_info=e)
-                push = pb.push_note("Tesla Charging Rate Error", e)
-
-                error_output = e.stderr.decode('utf-8')
-                if 'token' in error_output.lower():
-                    print("Token error detected, attempting to refresh token.")
-                    self.get_new_token()
-                    attempt += 1
-                    if attempt >= max_attempts:
-                        raise RuntimeError(f"Failed to resolve token issue after multiple attempts: {error_output}") from e
-                else:
-                    # If error is not related to token, re-raise with original error message
-                    raise RuntimeError(f"Subprocess command failed: {error_output}") from e
-
-    except Exception as e:
-        logging.critical('Error at %s', 'main', exc_info=e)
+    instance = DbusTeslaAPIService()
+    instance.run()
 if __name__ == "__main__":
   main()
 
