@@ -225,7 +225,7 @@ class DbusTeslaAPIService:
     refreshToken = response["refresh_token"]
     expiresIn = response["expires_in"]
     tokenType = response["token_type"]
-
+    
     return accessToken
 
   def _signOfLife(self):

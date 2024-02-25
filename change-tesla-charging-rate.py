@@ -7,6 +7,12 @@ import sys
 import logging
 from pushbullet import Pushbullet
 
+amps = sys.argv[1]
+if amps:
+    print(f"Changing charging rate to: {amps}") 
+else:
+    raise RuntimeError(f"No AMPs Provided")
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Load configurations from config.json
@@ -83,9 +89,8 @@ logging.basicConfig(      format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %
 while attempt < max_attempts:
     try:
         # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
-        result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
-        time.sleep(10)
-        result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
+        command = f"charging-set-amps"
+        result = subprocess.run(['tesla-control', command, amps], check=True, stderr=subprocess.PIPE)
         break  # Exit loop if successful
     except subprocess.CalledProcessError as e:
             # Check if the error output contains 'token'
