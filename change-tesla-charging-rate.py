@@ -62,6 +62,9 @@ class DbusTeslaAPIService:
                 # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
                 command = f"charging-set-amps"
                 result = subprocess.run(['tesla-control', command, amps], check=True, stderr=subprocess.PIPE)
+
+                push = pb.push_note(f"Tesla Charging Rate Change", f"Charging rate changed to {amps} amps.")
+
                 break  # Exit loop if successful
             except subprocess.CalledProcessError as e:
                 # Check if the error output contains 'token'
