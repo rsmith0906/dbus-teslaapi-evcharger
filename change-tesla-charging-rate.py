@@ -22,6 +22,7 @@ with open(config_file_path, 'r') as config_file:
 
 authtoken_file_path = os.path.join(script_dir, 'authtoken.txt')
 token_file_path = os.path.join(script_dir, 'token.txt')
+token_expire_file_path = os.path.join(script_dir, 'tokenexpire.txt')
 
 # Setting environment variables
 os.environ['PATH'] += ':/usr/local/bin:/usr/bin:/bin:/data/usr/local/go/bin'
@@ -66,14 +67,30 @@ def get_new_token():
 
     # Extracting the access token, if available
     auth_token = response_data.get('access_token', '')
+    expires_in = response_data.get('expires_in', 0)
+
+    expiration_date = time.time() + (expires_in - 1000)
+    expiration_date = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(expiration_date))
 
     # Saving the new auth token if it's not empty
     if auth_token:
         print("New auth token saved to token.txt.")
         with open(token_file_path, 'w') as token_file:
             token_file.write(auth_token)
+
+        with open(token_expire_file_path, 'w') as token_expire_file:
+            token_expire_file.write(expiration_date)
     else:
         print("Auth token is empty. Token not saved.")
+
+def get_token_is_expired():
+    with open(token_expire_file_path, 'r') as expire_file:
+        expiration_date = expire_file.read()
+        expiration_date = time.mktime(time.strptime(expiration_date, '%Y-%m-%d %H:%M:%S'))
+        if (expiration_date < time.time()):
+            return True
+    return False
+
 
 attempt = 0
 max_attempts = 2
@@ -88,6 +105,9 @@ logging.basicConfig(      format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %
 
 while attempt < max_attempts:
     try:
+        if get_token_is_expired():
+           get_new_token()
+
         # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
         command = f"charging-set-amps"
         result = subprocess.run(['tesla-control', command, amps], check=True, stderr=subprocess.PIPE)
