@@ -128,12 +128,15 @@ class DbusTeslaAPIService:
         print("Auth token is empty. Token not saved.")
 
   def get_token_is_expired(self):
-    with open(token_expire_file_path, 'r') as expire_file:
-        expiration_date = expire_file.read()
-        expiration_date = time.mktime(time.strptime(expiration_date, '%Y-%m-%d %H:%M:%S'))
-        if (expiration_date < time.time()):
-            print("Auth token is expired.")
-            return True
+    if os.path.exists(token_expire_file_path):
+        with open(token_expire_file_path, 'r') as expire_file:
+            expiration_date = expire_file.read()
+            expiration_date = time.mktime(time.strptime(expiration_date, '%Y-%m-%d %H:%M:%S'))
+            if expiration_date < time.time():
+                print("Auth token is expired.")
+                return True
+    else:
+      return True
     return False
 
   def _getConfig(self):
