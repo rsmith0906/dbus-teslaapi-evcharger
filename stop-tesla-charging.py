@@ -6,6 +6,7 @@ import time
 import sys
 import logging
 from pushbullet import Pushbullet
+import configparser # for config/ini file
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -30,6 +31,11 @@ os.environ['PATH'] += f':{go_path_output}/bin'
 
 pbApiKey = config['DEFAULT']['PushBulletKey']
 pb = Pushbullet(pbApiKey)
+
+def _getConfig(self):
+    config = configparser.ConfigParser()
+    config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
+    return config;
 
 def get_new_token():
     # Reading the refresh token from a json file

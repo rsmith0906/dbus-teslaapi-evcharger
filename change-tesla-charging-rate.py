@@ -6,6 +6,7 @@ import time
 import sys
 import logging
 from pushbullet import Pushbullet
+import configparser # for config/ini file
 
 amps = sys.argv[1]
 if amps:
@@ -38,7 +39,11 @@ os.environ['PATH'] += f':{go_path_output}/bin'
 pbApiKey = config['DEFAULT']['PushBulletKey']
 pb = Pushbullet(pbApiKey)
 
-def get_new_token():
+class DbusTeslaAPIService:
+  def __init__(self, productname='Tesla API', connection='Tesla API HTTP JSON service'):
+    config = self._getConfig()
+
+  def get_new_token():
     # Reading the refresh token from a json file
     with open(authtoken_file_path, 'r') as file:
         data = json.load(file)
@@ -83,7 +88,7 @@ def get_new_token():
     else:
         print("Auth token is empty. Token not saved.")
 
-def get_token_is_expired():
+  def get_token_is_expired():
     with open(token_expire_file_path, 'r') as expire_file:
         expiration_date = expire_file.read()
         expiration_date = time.mktime(time.strptime(expiration_date, '%Y-%m-%d %H:%M:%S'))
@@ -92,28 +97,45 @@ def get_token_is_expired():
             return True
     return False
 
+  def _getConfig(self):
+    config = configparser.ConfigParser()
+    config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
+    return config
 
-attempt = 0
-max_attempts = 2
+def main():
+  #configure logging
+  logging.basicConfig(      format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S',
+                            level=logging.INFO,
+                            handlers=[
+                                logging.FileHandler("%s/current.log" % (os.path.dirname(os.path.realpath(__file__)))),
+                                logging.StreamHandler()
+                            ])
 
-logging.basicConfig(      format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S',
-                        level=logging.INFO,
-                        handlers=[
-                            logging.FileHandler("%s/current.log" % (os.path.dirname(os.path.realpath(__file__)))),
-                            logging.StreamHandler()
-                        ])
+  try:
+    logging.info("Start");
 
-while attempt < max_attempts:
-    try:
-        if get_token_is_expired():
-           get_new_token()
+    attempt = 0
+    max_attempts = 2
 
-        # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
-        command = f"charging-set-amps"
-        result = subprocess.run(['tesla-control', command, amps], check=True, stderr=subprocess.PIPE)
-        break  # Exit loop if successful
-    except subprocess.CalledProcessError as e:
+    logging.basicConfig(      format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S',
+                            level=logging.INFO,
+                            handlers=[
+                                logging.FileHandler("%s/current.log" % (os.path.dirname(os.path.realpath(__file__)))),
+                                logging.StreamHandler()
+                            ])
+
+    while attempt < max_attempts:
+        try:
+            if self.get_token_is_expired():
+              self.get_new_token()
+
+            # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
+            command = f"charging-set-amps"
+            result = subprocess.run(['tesla-control', command, amps], check=True, stderr=subprocess.PIPE)
+            break  # Exit loop if successful
+        except subprocess.CalledProcessError as e:
             # Check if the error output contains 'token'
             logging.critical('Error at %s', 'main', exc_info=e)
             push = pb.push_note("Tesla Charging Rate Error", e)
@@ -121,10 +143,16 @@ while attempt < max_attempts:
             error_output = e.stderr.decode('utf-8')
             if 'token' in error_output.lower():
                 print("Token error detected, attempting to refresh token.")
-                get_new_token()
+                self.get_new_token()
                 attempt += 1
                 if attempt >= max_attempts:
                     raise RuntimeError(f"Failed to resolve token issue after multiple attempts: {error_output}") from e
             else:
                 # If error is not related to token, re-raise with original error message
                 raise RuntimeError(f"Subprocess command failed: {error_output}") from e
+
+  except Exception as e:
+    logging.critical('Error at %s', 'main', exc_info=e)
+if __name__ == "__main__":
+  main()
+
