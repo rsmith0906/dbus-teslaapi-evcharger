@@ -280,6 +280,7 @@ class DbusTeslaAPIService:
               battery_state = self._carData['response']['charge_state']['battery_level']
 
               if int(charge_energy_added) == 0:
+                 self._startDate = datetime.now()
                  self.resetSavedChargeStart()
               
               self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
@@ -309,7 +310,7 @@ class DbusTeslaAPIService:
                   else:
                      self._dbusserviceev['/Position'] = 0
 
-                  delta = datetime.now() - self.getSavedChargeStart()
+                  delta = datetime.now() - self._startDate
                   self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
                   charging = True
               else:
@@ -432,13 +433,12 @@ class DbusTeslaAPIService:
       car_id = config['DEFAULT']['VehicleId']
       charge_data = self.read_data(f"{car_id}-chargeStartTime")
       if charge_data:
-        return datetime.fromtimestamp(int(charge_data['ChargingStartTime']))
+        return datetime.now()
       else:
         return datetime.now()
     except Exception as e:
       return datetime.now()
        
-  
   def getDateFromLong(self, long):
     return datetime.fromtimestamp(long)
 
