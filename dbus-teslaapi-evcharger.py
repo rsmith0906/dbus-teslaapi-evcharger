@@ -151,7 +151,6 @@ class DbusTeslaAPIService:
     URL = "https://owner-api.teslamotors.com/api/1/vehicles/%s/vehicle_data" % (config['DEFAULT']['VehicleId'])
     return URL
 
-
   def _getTeslaAPIData(self):
     config = self._getConfig()
     car_id = config['DEFAULT']['VehicleId']
@@ -245,11 +244,11 @@ class DbusTeslaAPIService:
        inverterPower = self.getInverterPower()
 
        if inverterPower > 500:
-          self._wait_seconds = 10
+          self._wait_seconds = 30
 
        if abs(self._cacheInverterPower - inverterPower) >= 1.0:
           self._showInfoMessage(f"Inverter Power Level Changed: {inverterPower}")
-          self._wait_seconds = 10
+          self._wait_seconds = 30
           if abs(self._cacheInverterPower - inverterPower) >= 400.0:
              self._lastCheckData = datetime(2023, 12, 8)
           self._cacheInverterPower = inverterPower
@@ -302,7 +301,7 @@ class DbusTeslaAPIService:
                   self._dbusserviceev[pre + '/Power'] = power
                   self._dbusserviceev['/Mode'] = None
                   self._dbusserviceev["/Mode"] = str(battery_state) + '%'
-                  self._wait_seconds = 15
+                  self._wait_seconds = 30
                   self._running = True
 
                   if (current > 12):
