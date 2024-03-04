@@ -39,6 +39,11 @@ class DbusTeslaAPITokenRefreshService:
     # add _signOfLife 'timer' to get feedback in log every 5minutes
     gobject.timeout_add(self._getSignOfLifeInterval()*60*1000, self._signOfLife)
 
+    # Load configurations from config.json
+    self.config_file_path = os.path.join('/data/tesla/config.json')
+    with open(self.config_file_path, 'r') as config_file:
+        self.teslaConfig = json.load(config_file)
+
   def _getConfig(self):
     config = configparser.ConfigParser()
     config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
@@ -103,7 +108,7 @@ class DbusTeslaAPITokenRefreshService:
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     data = {
         'grant_type': 'refresh_token',
-        'client_id': self.config['CLIENT_ID'],
+        'client_id': self.teslaConfig['CLIENT_ID'],
         'refresh_token': refresh_token,
         'scopes': 'user_data vehicle_device_data vehicle_cmds vehicle_charging_cmds'
     }
