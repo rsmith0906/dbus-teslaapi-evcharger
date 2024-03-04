@@ -60,7 +60,6 @@ class DbusTeslaAPITokenRefreshService:
   def _update(self):
     try:
        config = self._getConfig()
-       str(config['DEFAULT']['Phase'])
 
        checkDiff = datetime.now() - self._lastTokenRefresh
        checkSecs = checkDiff.total_seconds()
