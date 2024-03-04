@@ -25,13 +25,13 @@ class DbusTeslaAPITokenRefreshService:
     self._runningSeconds = 0
     self._startDate = datetime.now()
     self._lastTokenRefresh = datetime(2023, 12, 8)
-    self._wait_seconds = 60 * 60 * 4 # 4 Hours
+    self._wait_seconds = 120 # 60 * 60 * 4 # 4 Hours
     self._running = False
     self._token = None
     
     self.authtoken_file_path = '/data/tesla/authtoken.txt'
-    self.token_file_path = '/data/tesla/authtoken.txt'
-    self.token_expire_file_path = '/data/tesla/authtoken.txt'
+    self.token_file_path = '/data/tesla/token.txt'
+    self.token_expire_file_path = '/data/tesla/tokenexpire.txt'
 
     # add _update function 'timer'
     gobject.timeout_add(10000, self._update) # pause 10 seconds before the next request
@@ -72,14 +72,14 @@ class DbusTeslaAPITokenRefreshService:
        if checkSecs > self._wait_seconds:
           logging.info("Getting new token")
           self.get_new_token()
+          self._lastTokenRefresh = datetime.now()
 
     except Exception as e:
       error_message = str(e)
       logging.critical('Error at %s', '_update', exc_info=e)
       
     self._lastUpdate = time.time()
-    self._signalChanges()
-
+ 
     # return true, otherwise add_timeout will be removed from GObject - see docs http://library.isr.ist.utl.pt/docs/pygtk2reference/gobject-functions.html#function-gobject--timeout-add
     return True
 
