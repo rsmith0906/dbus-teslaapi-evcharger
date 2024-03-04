@@ -25,7 +25,7 @@ class DbusTeslaAPITokenRefreshService:
     self._runningSeconds = 0
     self._startDate = datetime.now()
     self._lastTokenRefresh = datetime(2023, 12, 8)
-    self._wait_seconds = 120 # 60 * 60 * 4 # 4 Hours
+    self._wait_seconds = 60 * 60 * 4 # 4 Hours
     self._running = False
     self._token = None
     
