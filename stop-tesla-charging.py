@@ -49,7 +49,7 @@ class DbusTeslaAPIService:
                                 datefmt='%Y-%m-%d %H:%M:%S',
                                 level=logging.INFO,
                                 handlers=[
-                                    logging.FileHandler("%s/current.log" % (os.path.dirname(os.path.realpath(__file__)))),
+                                    logging.FileHandler("%s/current-stop-charging.log" % (os.path.dirname(os.path.realpath(__file__)))),
                                     logging.StreamHandler()
                                 ])
 
