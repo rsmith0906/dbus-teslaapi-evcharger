@@ -272,17 +272,28 @@ class DbusTeslaAPIService:
 
       while attempt < max_attempts:
           try:
-              # if self.get_token_is_expired():
-              #    self.get_new_token()
+              carData = self._getTeslaAPIData()
+              charge_state = carData['response']['charge_state']['charging_state']
 
-              # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
-              # result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
-              # time.sleep(10)
+              makeChange = False
+              if charge_state == 'Charging' and value == 1:
+                 makeChange = True
+              
+              if charge_state != 'Charging' and value == 0:
+                 makeChange = True
 
-              #if value == 1:
-                  # result = subprocess.run(['tesla-control', 'charging-start'], check=True, stderr=subprocess.PIPE)
-              #else:
-                  # result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
+              if makeChange:
+                if self.get_token_is_expired():
+                  self.get_new_token()
+
+                # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
+                result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
+                time.sleep(10)
+
+                if value == 1:
+                  result = subprocess.run(['tesla-control', 'charging-start'], check=True, stderr=subprocess.PIPE)
+                else:
+                  result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
 
               return True
           except subprocess.CalledProcessError as e:
@@ -463,9 +474,10 @@ class DbusTeslaAPIService:
        return False
 
   def _handlechangedvalue(self, path, value):
-    logging.debug("someone else updated %s to %s" % (path, value))
+    logging.info("someone else updated %s to %s" % (path, value))
 
-
+    if path == '/StartStop':
+      self._startstop(path, value)
 
     return True # accept the change
 
