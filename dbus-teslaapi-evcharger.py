@@ -45,6 +45,7 @@ class DbusTeslaAPIService:
     self._lastCheck = datetime(2023, 12, 8)
     self._lastCheckData = datetime(2023, 12, 8)
     self._running = False
+    self._firstRun = False
     self._carData = {}
     self._token = None
     self._request_timeout_string = "Request Timeout"
@@ -243,6 +244,10 @@ class DbusTeslaAPIService:
 
        inverterPower = self.getInverterPower()
 
+       if not self._firstRun:
+          self._dbusserviceev['/Mode'] = 0
+          self._firstRun = True
+
        if inverterPower > 500:
           self._wait_seconds = 30
 
@@ -278,43 +283,43 @@ class DbusTeslaAPIService:
               max_current = self._carData['response']['charge_state']['charge_current_request_max']
               battery_state = self._carData['response']['charge_state']['battery_level']
 
-              if int(charge_energy_added) == 0:
-                 self._startDate = datetime.now()
-                 self.resetSavedChargeStart()
-              
-              self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
-              self._dbusserviceev['/MaxCurrent'] = max_current
+              if max_current <= 12:
+                if int(charge_energy_added) == 0:
+                  self._startDate = datetime.now()
+                  self.resetSavedChargeStart()
+                
+                self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
+                self._dbusserviceev['/MaxCurrent'] = max_current
 
-              if charge_state == 'Stopped' or charging_state == 'Complete':
-                  if charge_port_latch == 'Engaged':
-                    self._dbusserviceev['/Status'] = 1
-                  else:
-                    self._dbusserviceev['/Status'] = 0
-                    self._dbusserviceev['/ChargingTime'] = 0
-                    self._dbusserviceev['/Position'] = 0
-                  self._wait_seconds = 60 * 5
-              elif charge_state == 'Charging':
-                  power = voltage * current
-                  self._dbusserviceev['/Status'] = 2
-                  self._dbusserviceev['/Current'] = current
-                  self._dbusserviceev['/Ac/Power'] = power
-                  self._dbusserviceev[pre + '/Power'] = power
-                  self._dbusserviceev['/Mode'] = None
-                  self._dbusserviceev["/Mode"] = str(battery_state) + '%'
-                  self._wait_seconds = 30
-                  self._running = True
+                if charge_state == 'Stopped' or charging_state == 'Complete':
+                    if charge_port_latch == 'Engaged':
+                      self._dbusserviceev['/Status'] = 1
+                    else:
+                      self._dbusserviceev['/Status'] = 0
+                      self._dbusserviceev['/ChargingTime'] = 0
+                      self._dbusserviceev['/Position'] = 0
+                    self._wait_seconds = 60 * 5
+                elif charge_state == 'Charging':
+                    power = voltage * current
+                    self._dbusserviceev['/Status'] = 2
+                    self._dbusserviceev['/Current'] = current
+                    self._dbusserviceev['/Ac/Power'] = power
+                    self._dbusserviceev[pre + '/Power'] = power
+                    # self._dbusserviceev["/Mode"] = str(battery_state) + '%'
+                    self._wait_seconds = 30
+                    self._running = True
 
-                  if (current > 12):
-                     self._dbusserviceev['/Position'] = 1
-                  else:
-                     self._dbusserviceev['/Position'] = 0
+                    if (current > 12):
+                      self._dbusserviceev['/Position'] = 1
+                    else:
+                      self._dbusserviceev['/Position'] = 0
 
-                  delta = datetime.now() - self._startDate
-                  self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
-                  charging = True
-              else:
-                  self._dbusserviceev['/Status'] = 10
-                  self._wait_seconds = 60 * 5
+                    delta = datetime.now() - self._startDate
+                    self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
+                    charging = True
+                else:
+                    self._dbusserviceev['/Status'] = 10
+                    self._wait_seconds = 60 * 5
 
           if not charging:
               self._dbusserviceev['/Ac/Power'] = 0
@@ -336,24 +341,24 @@ class DbusTeslaAPIService:
       error_message = str(e)
       if self._request_timeout_string in error_message:
         self._dbusserviceev['/Status'] = 0
-        self._dbusserviceev['/Mode'] = "Car Sleeping"
+        # self._dbusserviceev['/Mode'] = "Car Sleeping"
         self._wait_seconds = 60 * 5
         self._showInfoMessage('Car Sleeping')
       elif self._too_many_requests in error_message:
         self._dbusserviceev['/Status'] = 0
-        self._dbusserviceev['/Mode'] = "Too Many Requests"
+        # self._dbusserviceev['/Mode'] = "Too Many Requests"
         self._wait_seconds = self._wait_seconds + 30
         self._showInfoMessage('Too Many Requests')
       elif "NoPower" in error_message:
         self._dbusserviceev['/Status'] = 0
-        self._dbusserviceev['/Mode'] = "No Power to Charger"
+        # self._dbusserviceev['/Mode'] = "No Power to Charger"
         self._wait_seconds = 60 * 5
         self._showInfoMessage('No Power to Charger')
       else:
         self._wait_seconds = 60 * 5
         self._dbusserviceev['/Status'] = 10
         self._token = self._getAccessToken()
-        self._dbusserviceev['/Mode'] = "Check Logs for Error"
+        # self._dbusserviceev['/Mode'] = "Check Logs for Error"
         logging.critical('Error at %s', '_update', exc_info=e)
       
     self._lastUpdate = time.time()
