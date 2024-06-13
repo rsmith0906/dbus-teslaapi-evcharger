@@ -258,23 +258,32 @@ class DbusTeslaAPIService:
     logging.info("Start: sign of life - Last _update() call: %s" % (self._lastUpdate))
     return True
 
+  def _setcurrent(self, path, value):
+    try:
+      # p = requests.post(url = self.CURRENT_URL, data = {'value': value}, timeout=10)
+      test = 0
+    except Exception as e:
+      log.error('Error writing current to station: %s' % e)
+      return False
+    return True
+
   def _startstop(self, path, value):
       attempt = 0
       max_attempts = 2
 
       while attempt < max_attempts:
           try:
-              if self.get_token_is_expired():
-                  self.get_new_token()
+              # if self.get_token_is_expired():
+              #    self.get_new_token()
 
               # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
-              result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
-              time.sleep(10)
+              # result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
+              # time.sleep(10)
 
-              if value == 1:
-                  result = subprocess.run(['tesla-control', 'charging-start'], check=True, stderr=subprocess.PIPE)
-              else:
-                  result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
+              #if value == 1:
+                  # result = subprocess.run(['tesla-control', 'charging-start'], check=True, stderr=subprocess.PIPE)
+              #else:
+                  # result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
 
               return True
           except subprocess.CalledProcessError as e:

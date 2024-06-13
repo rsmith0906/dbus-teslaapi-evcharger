@@ -18,6 +18,7 @@
         "onchangecallback",
         "ownerapi",
         "productname",
+        "setcurrent",
         "startstop",
         "systemcalc",
         "TESLAVERSION",
