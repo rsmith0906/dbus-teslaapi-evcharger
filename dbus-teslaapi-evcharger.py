@@ -246,7 +246,7 @@ class DbusTeslaAPIService:
 
        if not self._firstRun:
           self._dbusserviceev['/Mode'] = 0
-          self._dbusserviceev['/StartStop'] = 1
+          self._dbusserviceev['/Connected'] = 1
           self._firstRun = True
 
        if inverterPower > 500:
