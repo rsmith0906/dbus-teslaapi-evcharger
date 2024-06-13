@@ -55,6 +55,7 @@ class DbusTeslaAPIService:
     _kwh = lambda p, v: (str(round(v, 2)) + 'kWh')
     _state = lambda p, v: (str(v))
     _mode = lambda p, v: (str(v))
+    _startStop = lambda p, v: (str(v))
     _a = lambda p, v: (str(round(v, 1)) + 'A')
     _w = lambda p, v: (str(round(v, 1)) + 'W')
     _v = lambda p, v: (str(round(v, 1)) + 'V')
@@ -89,6 +90,7 @@ class DbusTeslaAPIService:
           '/Current': {'initial': 0, 'textformat': _a},
           '/ChargingTime': {'initial': 0, 'textformat': _a},
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
+          '/StartStop': {'initial': 0, 'textformat': _startStop},
         })
 
     # add _update function 'timer'
@@ -115,9 +117,6 @@ class DbusTeslaAPIService:
       dbusservice.add_path('/Position', int(config['DEFAULT']['Position']))
       dbusservice.add_path('/Serial', self._getTeslaAPISerial())
       dbusservice.add_path('/UpdateIndex', 0)
-
-      dbusservice.add_path('/SetCurrent', None, writeable=True, onchangecallback=self._setcurrent)
-      dbusservice.add_path('/StartStop', None, writeable=True, onchangecallback=self._startstop)
 
       # add path values to dbus
       for path, settings in paths.items():
@@ -465,6 +464,9 @@ class DbusTeslaAPIService:
 
   def _handlechangedvalue(self, path, value):
     logging.debug("someone else updated %s to %s" % (path, value))
+
+
+
     return True # accept the change
 
   def is_not_blank(self, s):
