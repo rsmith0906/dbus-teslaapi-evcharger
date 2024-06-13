@@ -16,6 +16,28 @@ import json
 import requests # for http GET
 import configparser # for config/ini file
 
+script_dir = '/data/tesla'
+
+# Load configurations from config.json
+config_file_path = os.path.join(script_dir, 'config.json')
+with open(config_file_path, 'r') as config_file:
+    config = json.load(config_file)
+
+authtoken_file_path = os.path.join(script_dir, 'authtoken.txt')
+token_file_path = os.path.join(script_dir, 'token.txt')
+token_expire_file_path = os.path.join(script_dir, 'tokenexpire.txt')
+
+# Setting environment variables
+os.environ['PATH'] += ':/usr/local/bin:/usr/bin:/bin:/data/usr/local/go/bin'
+os.environ['TESLA_VIN'] = config['VIN']
+os.environ['TESLA_KEY_NAME'] = 'Tessy'
+os.environ['TESLA_KEY_FILE'] = '/data/tesla/private.pem'
+os.environ['TESLA_TOKEN_FILE'] = '/data/tesla/token.txt'
+
+# Adding Go bin to PATH
+go_path_output = subprocess.check_output(['/data/usr/local/go/bin/go', 'env', 'GOPATH']).decode().strip()
+os.environ['PATH'] += f':{go_path_output}/bin'
+
 # our own packages from victron
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), '/opt/victronenergy/dbus-systemcalc-py/ext/velib_python'))
 from vedbus import VeDbusService
@@ -92,6 +114,9 @@ class DbusTeslaAPIService:
       dbusservice.add_path('/Position', int(config['DEFAULT']['Position']))
       dbusservice.add_path('/Serial', self._getTeslaAPISerial())
       dbusservice.add_path('/UpdateIndex', 0)
+
+      dbusservice.add_path('/SetCurrent', None, writeable=True, onchangecallback=self._setcurrent)
+      dbusservice.add_path('/StartStop', None, writeable=True, onchangecallback=self._startstop)
 
       # add path values to dbus
       for path, settings in paths.items():
@@ -231,6 +256,43 @@ class DbusTeslaAPIService:
   def _signOfLife(self):
     logging.info("Start: sign of life - Last _update() call: %s" % (self._lastUpdate))
     return True
+
+  def _startstop(self, path, value):
+      attempt = 0
+      max_attempts = 2
+
+      while attempt < max_attempts:
+          try:
+              if self.get_token_is_expired():
+                  self.get_new_token()
+
+              # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
+              result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
+              time.sleep(10)
+
+              if value == 1:
+                  result = subprocess.run(['tesla-control', 'charging-start'], check=True, stderr=subprocess.PIPE)
+              else:
+                  result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
+
+              return True
+          except subprocess.CalledProcessError as e:
+              # Check if the error output contains 'token'
+              logging.critical('Error at %s', 'main', exc_info=e)
+              
+              error_output = e.stderr.decode('utf-8')
+              
+              if 'token' in error_output.lower():
+                  print("Token error detected, attempting to refresh token.")
+                  self.get_new_token()
+                  attempt += 1
+                  if attempt >= max_attempts:
+                      raise RuntimeError(f"Failed to resolve token issue after multiple attempts: {error_output}") from e
+              else:
+                  # If error is not related to token, re-raise with original error message
+                  raise RuntimeError(f"Subprocess command failed: {error_output}") from e
+
+      return False
 
   def _update(self):
     try:

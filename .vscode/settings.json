@@ -18,12 +18,15 @@
         "onchangecallback",
         "ownerapi",
         "productname",
+        "startstop",
         "systemcalc",
         "TESLAVERSION",
         "TESLAVIN",
         "Tessy",
         "textformat",
         "tokenexpire",
+        "vedbus",
+        "velib",
         "Victron",
         "victronenergy"
     ]

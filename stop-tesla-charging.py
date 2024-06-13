@@ -5,7 +5,6 @@ import subprocess
 import time
 import sys
 import logging
-from pushbullet import Pushbullet
 import configparser # for config/ini file
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -35,10 +34,6 @@ class DbusTeslaAPIService:
 
   def __init__(self, productname='Tesla API', connection='Tesla API HTTP JSON service'):
     config = self._getConfig()
-    global pb
-
-    pbApiKey = config['DEFAULT']['PushBulletKey']
-    pb = Pushbullet(pbApiKey)
 
   def run(self):
     try:
@@ -63,16 +58,13 @@ class DbusTeslaAPIService:
                 time.sleep(10)
                 result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
 
-                push = pb.push_note(f"Tesla Charging Stopped", f"Charging has been stopped.")
-
                 break  # Exit loop if successful
             except subprocess.CalledProcessError as e:
                 # Check if the error output contains 'token'
                 logging.critical('Error at %s', 'main', exc_info=e)
                 
                 error_output = e.stderr.decode('utf-8')
-                push = pb.push_note(f"Tesla Charging Rate Error", error_output)
-
+                
                 if 'token' in error_output.lower():
                     print("Token error detected, attempting to refresh token.")
                     self.get_new_token()
