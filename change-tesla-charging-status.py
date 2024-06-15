@@ -60,7 +60,7 @@ class DbusTeslaAPIService:
                     self.get_new_token()
 
                 # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
-                if status == "start":
+                if status == 1:
                     if attempt > 0:
                         time.sleep(10)
                         result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
