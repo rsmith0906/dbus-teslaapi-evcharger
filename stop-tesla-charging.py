@@ -9,6 +9,12 @@ import configparser # for config/ini file
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
+status = sys.argv[1]
+if status:
+    print(f"Changing charging rate to: {status}") 
+else:
+    raise RuntimeError(f"No status Provided")
+
 # Load configurations from config.json
 config_file_path = os.path.join(script_dir, 'config.json')
 with open(config_file_path, 'r') as config_file:
@@ -54,9 +60,14 @@ class DbusTeslaAPIService:
                     self.get_new_token()
 
                 # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
-                result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
-                time.sleep(10)
-                result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
+                if status == "start":
+                    if attempt > 0:
+                        time.sleep(10)
+                        result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
+
+                    result = subprocess.run(['tesla-control', 'charging-start'], check=True, stderr=subprocess.PIPE)
+                else:
+                    result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
 
                 break  # Exit loop if successful
             except subprocess.CalledProcessError as e:
@@ -65,7 +76,7 @@ class DbusTeslaAPIService:
                 
                 error_output = e.stderr.decode('utf-8')
                 
-                if 'token' in error_output.lower():
+                if 'token' in error_output.lower() or "sleep" in error_output.lower():
                     print("Token error detected, attempting to refresh token.")
                     self.get_new_token()
                     attempt += 1

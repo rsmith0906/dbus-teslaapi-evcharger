@@ -269,37 +269,50 @@ class DbusTeslaAPIService:
   def _startstop(self, path, value):
       attempt = 0
       max_attempts = 2
+      success = False
+
+      logging.info("StartIt")
 
       while attempt < max_attempts:
           try:
-              carData = self._getTeslaAPIData()
-              charge_state = carData['response']['charge_state']['charging_state']
+              logging.info("LoopIt")
 
-              makeChange = False
-              if charge_state == 'Charging' and value == 1:
+              config = self._getConfig()
+              car_id = config['DEFAULT']['VehicleId']
+
+              self._carData = self.read_data(car_id)
+              if self._carData:
+                 charge_state = self._carData['response']['charge_state']['charging_state']
+                 logging.info(charge_state)
+
                  makeChange = True
-              
-              if charge_state != 'Charging' and value == 0:
-                 makeChange = True
+                 if charge_state == 'Charging' and value == 1:
+                  makeChange = False
+                  
+                 if charge_state != 'Charging' and value == 0:
+                  makeChange = False
 
-              if makeChange:
-                if self.get_token_is_expired():
-                  self.get_new_token()
+                 if makeChange:
+                   if self.get_token_is_expired():
+                      self.get_new_token()
 
-                # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
-                result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
-                time.sleep(10)
+                   # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
+                   result = subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE)
+                   time.sleep(10)
 
-                if value == 1:
-                  result = subprocess.run(['tesla-control', 'charging-start'], check=True, stderr=subprocess.PIPE)
-                else:
-                  result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
+                   if value == 1:
+                     result = subprocess.run(['tesla-control', 'charging-start'], check=True, stderr=subprocess.PIPE)
+                   else:
+                     result = subprocess.run(['tesla-control', 'charging-stop'], check=True, stderr=subprocess.PIPE)
 
-              return True
+              success = True
+              break
           except subprocess.CalledProcessError as e:
               # Check if the error output contains 'token'
               logging.critical('Error at %s', 'main', exc_info=e)
               
+              success = False
+
               error_output = e.stderr.decode('utf-8')
               
               if 'token' in error_output.lower():
@@ -312,7 +325,7 @@ class DbusTeslaAPIService:
                   # If error is not related to token, re-raise with original error message
                   raise RuntimeError(f"Subprocess command failed: {error_output}") from e
 
-      return False
+      return success
 
   def _update(self):
     try:
@@ -371,7 +384,7 @@ class DbusTeslaAPIService:
                   self._startDate = datetime.now()
                   self.resetSavedChargeStart()
                 
-                self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
+                #self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
                 self._dbusserviceev['/MaxCurrent'] = max_current
 
                 if charge_state == 'Stopped' or charging_state == 'Complete':
@@ -500,6 +513,63 @@ class DbusTeslaAPIService:
       logging.critical('Error at %s', '_update', exc_info=e)
       return None
   
+  def get_new_token(self):
+    # Reading the refresh token from a json file
+    with open(authtoken_file_path, 'r') as file:
+        data = json.load(file)
+        refresh_token = data['refresh_token']
+
+    # Making a POST request to get a new auth token
+    url = 'https://auth.tesla.com/oauth2/v3/token'
+    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    data = {
+        'grant_type': 'refresh_token',
+        'client_id': config['CLIENT_ID'],
+        'refresh_token': refresh_token,
+        'scopes': 'user_data vehicle_device_data vehicle_cmds vehicle_charging_cmds'
+    }
+
+    response = requests.post(url, headers=headers, data=data)
+    response_data = response.json()
+
+    # Checking if the response contains 'refresh_token' and writing to authtoken.txt
+    if 'refresh_token' in response_data:
+        with open(authtoken_file_path, 'w') as file:
+            json.dump(response_data, file, indent=4)
+        print("New auth and refresh tokens saved to authtoken.txt.")
+    else:
+        print("Response does not contain a refresh token.")
+
+    # Extracting the access token, if available
+    auth_token = response_data.get('access_token', '')
+    expires_in = response_data.get('expires_in', 0)
+
+    expiration_date = time.time() + (expires_in - 1000)
+    expiration_date = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(expiration_date))
+
+    # Saving the new auth token if it's not empty
+    if auth_token:
+        print("New auth token saved to token.txt.")
+        with open(token_file_path, 'w') as token_file:
+            token_file.write(auth_token)
+
+        with open(token_expire_file_path, 'w') as token_expire_file:
+            token_expire_file.write(expiration_date)
+    else:
+        print("Auth token is empty. Token not saved.")
+
+  def get_token_is_expired(self):
+    if os.path.exists(token_expire_file_path):
+        with open(token_expire_file_path, 'r') as expire_file:
+            expiration_date = expire_file.read()
+            expiration_date = time.mktime(time.strptime(expiration_date, '%Y-%m-%d %H:%M:%S'))
+            if expiration_date < time.time():
+                print("Auth token is expired.")
+                return True
+    else:
+      return True
+    return False
+
   def getInverterPower(self):
     inverter_data = self.read_data("Inverter")
     if inverter_data:
