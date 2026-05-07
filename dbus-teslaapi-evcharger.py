@@ -16,6 +16,7 @@ import json
 import subprocess
 import requests # for http GET
 import configparser # for config/ini file
+import dbus # for SystemBus(private=True) when registering a second service
 
 script_dir = '/data/tesla'
 
@@ -98,8 +99,13 @@ class DbusTeslaAPIService:
     # Uses a high DeviceInstance (75) to avoid collisions with the real house bank,
     # and minimal paths so dbus-systemcalc has nothing to roll up.
     battery_instance = int(config['DEFAULT'].get('BatteryDeviceInstance', '75'))
+    # Use a private SystemBus connection — VeDbusService registers an object handler
+    # at '/' during __init__, and the EVCS service already claimed '/' on the default
+    # singleton SystemBus. A separate connection avoids the collision.
+    self._battbus = dbus.SystemBus(private=True)
     self._dbusservicebatt = VeDbusService(
-        "{}.tesla_id{:02d}".format('com.victronenergy.battery', battery_instance))
+        "{}.tesla_id{:02d}".format('com.victronenergy.battery', battery_instance),
+        bus=self._battbus)
     self._dbusservicebatt.add_path('/Mgmt/ProcessName', __file__)
     self._dbusservicebatt.add_path('/Mgmt/ProcessVersion',
                                    'Tesla telemetry on Python ' + platform.python_version())
