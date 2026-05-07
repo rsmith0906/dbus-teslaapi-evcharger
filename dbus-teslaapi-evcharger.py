@@ -90,10 +90,36 @@ class DbusTeslaAPIService:
           '/MaxCurrent': {'initial': 0, 'textformat': _a},
           '/Current': {'initial': 0, 'textformat': _a},
           '/ChargingTime': {'initial': 0, 'textformat': _a},
+          '/Session/Time': {'initial': 0, 'textformat': _a},
+          '/Session/Energy': {'initial': 0, 'textformat': _kwh},
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
           '/StartStop': {'initial': 0, 'textformat': _startStop},
-          '/Soc': {'initial': 0, 'textformat': _pct},
         })
+
+    # Parallel battery service for Tesla SoC — appears in the VRM Battery block.
+    # Uses a high DeviceInstance (75) to avoid collisions with the real house bank,
+    # and minimal paths so dbus-systemcalc has nothing to roll up.
+    battery_instance = int(config['DEFAULT'].get('BatteryDeviceInstance', '75'))
+    self._dbusservicebatt = VeDbusService(
+        "{}.tesla_id{:02d}".format('com.victronenergy.battery', battery_instance))
+    self._dbusservicebatt.add_path('/Mgmt/ProcessName', __file__)
+    self._dbusservicebatt.add_path('/Mgmt/ProcessVersion',
+                                   'Tesla telemetry on Python ' + platform.python_version())
+    self._dbusservicebatt.add_path('/Mgmt/Connection', connection)
+    self._dbusservicebatt.add_path('/DeviceInstance', battery_instance)
+    self._dbusservicebatt.add_path('/ProductId', 0xFFFF)
+    self._dbusservicebatt.add_path('/ProductName', 'Tesla')
+    self._dbusservicebatt.add_path('/CustomName', 'Tesla Model 3')
+    self._dbusservicebatt.add_path('/Connected', 1)
+    self._dbusservicebatt.add_path('/FirmwareVersion', self._getTeslaAPIVersion())
+    self._dbusservicebatt.add_path('/HardwareVersion', 0)
+    self._dbusservicebatt.add_path('/Serial', self._getTeslaAPISerial())
+    # AllowedRoles WITHOUT 'system' — keep dbus-systemcalc from electing this as the system battery.
+    self._dbusservicebatt.add_path('/AllowedRoles', ['default'])
+    self._dbusservicebatt.add_path('/Soc', 0, gettextcallback=_pct)
+    self._dbusservicebatt.add_path('/Dc/0/Voltage', 0, gettextcallback=_v)
+    self._dbusservicebatt.add_path('/Dc/0/Current', 0, gettextcallback=_a)
+    self._dbusservicebatt.add_path('/Dc/0/Power', 0, gettextcallback=_w)
 
     # add _update function 'timer'
     gobject.timeout_add(500, self._update) # pause 250ms before the next request
@@ -367,10 +393,18 @@ class DbusTeslaAPIService:
 
           self._showInfoMessage('Car Awake')
 
-          # SoC always updates regardless of charge state / current gating below
+          # SoC always updates regardless of charge state / current gating below.
+          # Published on the parallel battery service so it appears in the VRM Battery block.
           battery_level = self._carData['response']['charge_state'].get('battery_level')
           if battery_level is not None:
-             self._dbusserviceev['/Soc'] = battery_level
+             self._dbusservicebatt['/Soc'] = battery_level
+             # charger_power is in kW on the AC side; treat it as DC charge power into the pack.
+             charger_power_kw = self._carData['response']['charge_state'].get('charger_power') or 0
+             charger_voltage = self._carData['response']['charge_state'].get('charger_voltage') or 0
+             charger_amps = self._carData['response']['charge_state'].get('charger_actual_current') or 0
+             self._dbusservicebatt['/Dc/0/Power'] = float(charger_power_kw) * 1000.0
+             self._dbusservicebatt['/Dc/0/Voltage'] = float(charger_voltage)
+             self._dbusservicebatt['/Dc/0/Current'] = float(charger_amps)
 
           #send data to DBus
           for phase in ['L1']:
@@ -394,12 +428,17 @@ class DbusTeslaAPIService:
                 #self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
                 self._dbusserviceev['/MaxCurrent'] = max_current
 
+                # Modern path: /Session/Energy supersedes the (deprecated) /Ac/Energy/Forward
+                # for per-session kWh. Always reflects the car's reported energy added.
+                self._dbusserviceev['/Session/Energy'] = float(charge_energy_added)
+
                 if charge_state == 'Stopped' or charging_state == 'Complete':
                     if charge_port_latch == 'Engaged':
                       self._dbusserviceev['/Status'] = 1
                     else:
                       self._dbusserviceev['/Status'] = 0
                       self._dbusserviceev['/ChargingTime'] = 0
+                      self._dbusserviceev['/Session/Time'] = 0
                       self._dbusserviceev['/Position'] = 0
                     self._wait_seconds = 60 * 5
                 elif charge_state == 'Charging':
@@ -418,7 +457,9 @@ class DbusTeslaAPIService:
                       self._dbusserviceev['/Position'] = 0
 
                     delta = datetime.now() - self._startDate
-                    self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
+                    elapsed = delta.total_seconds()
+                    self._dbusserviceev['/ChargingTime'] = elapsed   # legacy/deprecated path
+                    self._dbusserviceev['/Session/Time'] = elapsed   # what gui-v2 / VRM read
                     charging = True
                 else:
                     self._dbusserviceev['/Status'] = 10
