@@ -59,6 +59,7 @@ class DbusTeslaAPIService:
     _a = lambda p, v: (str(round(v, 1)) + 'A')
     _w = lambda p, v: (str(round(v, 1)) + 'W')
     _v = lambda p, v: (str(round(v, 1)) + 'V')
+    _pct = lambda p, v: (str(round(v, 1)) + '%')
 
     self._dbusserviceev = VeDbusService("{}.http_{:02d}".format('com.victronenergy.evcharger', deviceinstance))
 
@@ -91,6 +92,7 @@ class DbusTeslaAPIService:
           '/ChargingTime': {'initial': 0, 'textformat': _a},
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
           '/StartStop': {'initial': 0, 'textformat': _startStop},
+          '/Soc': {'initial': 0, 'textformat': _pct},
         })
 
     # add _update function 'timer'
@@ -364,6 +366,11 @@ class DbusTeslaAPIService:
              raise ValueError("NoPower")
 
           self._showInfoMessage('Car Awake')
+
+          # SoC always updates regardless of charge state / current gating below
+          battery_level = self._carData['response']['charge_state'].get('battery_level')
+          if battery_level is not None:
+             self._dbusserviceev['/Soc'] = battery_level
 
           #send data to DBus
           for phase in ['L1']:
