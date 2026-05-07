@@ -429,7 +429,7 @@ class DbusTeslaAPIService:
                   self._startDate = datetime.now()
                   self.resetSavedChargeStart()
                 
-                #self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
+                self._dbusserviceev['/Ac/Energy/Forward'] = float(charge_energy_added)
                 self._dbusserviceev['/MaxCurrent'] = max_current
 
                 if charge_state == 'Stopped' or charging_state == 'Complete':
