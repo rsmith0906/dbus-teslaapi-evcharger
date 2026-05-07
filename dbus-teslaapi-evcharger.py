@@ -90,8 +90,6 @@ class DbusTeslaAPIService:
           '/MaxCurrent': {'initial': 0, 'textformat': _a},
           '/Current': {'initial': 0, 'textformat': _a},
           '/ChargingTime': {'initial': 0, 'textformat': _a},
-          '/Session/Time': {'initial': 0, 'textformat': _a},
-          '/Session/Energy': {'initial': 0, 'textformat': _kwh},
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
           '/StartStop': {'initial': 0, 'textformat': _startStop},
         })
@@ -428,17 +426,12 @@ class DbusTeslaAPIService:
                 #self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
                 self._dbusserviceev['/MaxCurrent'] = max_current
 
-                # Modern path: /Session/Energy supersedes the (deprecated) /Ac/Energy/Forward
-                # for per-session kWh. Always reflects the car's reported energy added.
-                self._dbusserviceev['/Session/Energy'] = float(charge_energy_added)
-
                 if charge_state == 'Stopped' or charging_state == 'Complete':
                     if charge_port_latch == 'Engaged':
                       self._dbusserviceev['/Status'] = 1
                     else:
                       self._dbusserviceev['/Status'] = 0
                       self._dbusserviceev['/ChargingTime'] = 0
-                      self._dbusserviceev['/Session/Time'] = 0
                       self._dbusserviceev['/Position'] = 0
                     self._wait_seconds = 60 * 5
                 elif charge_state == 'Charging':
@@ -457,9 +450,7 @@ class DbusTeslaAPIService:
                       self._dbusserviceev['/Position'] = 0
 
                     delta = datetime.now() - self._startDate
-                    elapsed = delta.total_seconds()
-                    self._dbusserviceev['/ChargingTime'] = elapsed   # legacy/deprecated path
-                    self._dbusserviceev['/Session/Time'] = elapsed   # what gui-v2 / VRM read
+                    self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
                     charging = True
                 else:
                     self._dbusserviceev['/Status'] = 10
