@@ -2,4 +2,7 @@
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 exec 2>&1
-python $(realpath $SCRIPT_DIR/../dbus-teslaapi-evcharger.py)
+# exec so SIGTERM from daemontools reaches python directly. Without it, the sh wrapper
+# is signalled, python is orphaned and keeps holding the dbus name, and the restarted
+# instance crash-loops on NameExistsException until the orphan is killed by hand.
+exec python $(realpath $SCRIPT_DIR/../dbus-teslaapi-evcharger.py)

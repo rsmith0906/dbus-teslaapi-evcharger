@@ -205,26 +205,39 @@ class DbusTeslaAPIService:
       return str(version)
 
   def _getTeslaAPIStatusUrl(self):
-    config = self._getConfig()
-    URL = "https://owner-api.teslamotors.com/api/1/vehicles/%s/vehicle_data" % (config['DEFAULT']['VehicleId'])
+    # Fleet API (NA region). The legacy owner-api.teslamotors.com endpoint was
+    # decommissioned by Tesla and now returns 403. vehicle_data is a data read,
+    # so it works directly against Fleet API without the signed-command proxy.
+    # vehicle_tag is the VIN (Fleet API accepts VIN or id).
+    URL = "https://fleet-api.prd.na.vn.cloud.tesla.com/api/1/vehicles/%s/vehicle_data" % (config['VIN'])
     return URL
 
   def _getTeslaAPIData(self):
-    config = self._getConfig()
-    car_id = config['DEFAULT']['VehicleId']
+    cfg = self._getConfig()
+    car_id = cfg['DEFAULT']['VehicleId']
     URL = self._getTeslaAPIStatusUrl()
 
-    if not self._token:
-       self._token = self._getAccessToken()
+    # Use the Fleet API token managed by get_new_token()/get_token_is_expired()
+    # (stored in token.txt) — the same one the command path uses. The legacy
+    # owner-api token from _getAccessToken() no longer works.
+    if self.get_token_is_expired():
+       self.get_new_token()
 
-    if not self._token:
-        raise ValueError("Could not retrieve Tesla Token")
+    with open(token_file_path, 'r') as token_file:
+       token = token_file.read().strip()
 
-    token = self._token
+    if not token:
+        raise ValueError("Could not retrieve Tesla Fleet token")
+
+    self._token = token
 
     headers = {
         'Authorization': f'Bearer {token}'
     }
+
+    # Fleet API requires an explicit endpoints list; without it the response omits
+    # the state blocks this service reads (charge_state / vehicle_state / drive_state).
+    params = {'endpoints': 'charge_state;vehicle_state;drive_state'}
 
     checkDiff = datetime.now() - self._lastCheckData
     checkSecs = checkDiff.total_seconds()
@@ -233,7 +246,7 @@ class DbusTeslaAPIService:
        self._lastCheckData = datetime.now()
        logging.info(f"Last Get Tesla Data: {self._lastCheckData} - Wait in Seconds: {self._wait_seconds}")
 
-       response = requests.get(url = URL, headers=headers)
+       response = requests.get(url = URL, headers=headers, params=params, timeout=(10, 30))
        response.raise_for_status()
 
        # check for response
@@ -266,7 +279,7 @@ class DbusTeslaAPIService:
     }
 
     json_data = json.dumps(body)
-    response = requests.post(url = URL, data=json_data, headers={'Content-Type': 'application/json'})
+    response = requests.post(url = URL, data=json_data, headers={'Content-Type': 'application/json'}, timeout=(10, 30))
 
     # check for response
     if not response:
@@ -278,11 +291,17 @@ class DbusTeslaAPIService:
     if not response:
         raise ValueError("Converting response to JSON failed")
 
+    # Tesla returns an error payload (e.g. {"error": "login_required", ...}) with a 4xx
+    # instead of an access_token. Guard against the missing key so we raise a clear,
+    # catchable error rather than a KeyError that escapes _update() and kills the timer.
+    if "access_token" not in response:
+        raise ValueError("Tesla token request failed: %s" % (response))
+
     accessToken = response["access_token"]
-    refreshToken = response["refresh_token"]
-    expiresIn = response["expires_in"]
-    tokenType = response["token_type"]
-    
+    refreshToken = response.get("refresh_token")
+    expiresIn = response.get("expires_in")
+    tokenType = response.get("token_type")
+
     return accessToken
 
   def _signOfLife(self):
@@ -498,9 +517,17 @@ class DbusTeslaAPIService:
       else:
         self._wait_seconds = 60 * 5
         self._dbusserviceev['/Status'] = 10
-        self._token = self._getAccessToken()
         # self._dbusserviceev['/Mode'] = "Check Logs for Error"
         logging.critical('Error at %s', '_update', exc_info=e)
+        # Force a fresh Fleet token on the next cycle, but NEVER let a token-refresh
+        # failure escape _update(): an unhandled exception in this callback makes GLib
+        # remove the timeout source, permanently freezing the service (no further
+        # _update() calls).
+        self._token = None
+        try:
+          self.get_new_token()
+        except Exception as token_error:
+          logging.critical('Token refresh failed during _update recovery', exc_info=token_error)
       
     self._lastUpdate = time.time()
     self._signalChanges()
