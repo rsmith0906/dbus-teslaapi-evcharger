@@ -76,7 +76,13 @@ class DbusTeslaAPIService:
     self._token = None
     self._request_timeout_string = "Request Timeout"
     self._too_many_requests = "Too Many Requests"
-    self._wait_seconds = 30
+    # Fleet API vehicle_data is metered against a monthly billing/usage cap.
+    # Polling too fast (the old 30s) exhausts the free allowance in days and Tesla
+    # disables the account (403 "account disabled: EXCEEDED_LIMIT"). Keep the floors
+    # conservative: ~2 min while actively charging, ~5 min otherwise.
+    self._poll_charging = 120
+    self._poll_idle = 300
+    self._wait_seconds = self._poll_idle
     self._lastMessage = ""
     self._lastUpdate = 0
     self._cacheInverterPower = Decimal(0.0)
@@ -396,13 +402,13 @@ class DbusTeslaAPIService:
           self._firstRun = True
 
        if inverterPower > 500:
-          self._wait_seconds = 30
+          self._wait_seconds = self._poll_charging
 
+       # Track inverter power for display, but do NOT force a fresh Tesla poll on every
+       # swing — that is what burned through the Fleet API quota. The regular interval
+       # below governs how often vehicle_data is fetched.
        if abs(self._cacheInverterPower - inverterPower) >= 1.0:
           self._showInfoMessage(f"Inverter Power Level Changed: {inverterPower}")
-          self._wait_seconds = 30
-          if abs(self._cacheInverterPower - inverterPower) >= 400.0:
-             self._lastCheckData = datetime(2023, 12, 8)
           self._cacheInverterPower = inverterPower
 
        #get data from TeslaAPI Plug
@@ -466,7 +472,7 @@ class DbusTeslaAPIService:
                     self._dbusserviceev['/Ac/Power'] = power
                     self._dbusserviceev[pre + '/Power'] = power
                     # self._dbusserviceev["/Mode"] = str(battery_state) + '%'
-                    self._wait_seconds = 30
+                    self._wait_seconds = self._poll_charging
                     self._running = True
 
                     if (current > 12):
