@@ -101,6 +101,9 @@ class DbusTeslaAPIService:
           '/StartStop': {'initial': 0, 'textformat': _startStop},
         })
 
+    # Preserve the last observed plug state across a restart while the car sleeps.
+    self._restore_cached_connection_status()
+
     # Parallel battery service for Tesla SoC — appears in the VRM Battery block.
     # Uses a high DeviceInstance (75) to avoid collisions with the real house bank,
     # and minimal paths so dbus-systemcalc has nothing to roll up.
@@ -160,6 +163,19 @@ class DbusTeslaAPIService:
       for path, settings in paths.items():
         dbusservice.add_path(
           path, settings['initial'], gettextcallback=settings['textformat'], writeable=True, onchangecallback=self._handlechangedvalue)
+
+  def _restore_cached_connection_status(self):
+    cfg = self._getConfig()
+    cached = self.read_data(cfg['DEFAULT']['VehicleId'])
+    charge = (cached or {}).get('response', {}).get('charge_state', {})
+    state = charge.get('charging_state')
+    latch = charge.get('charge_port_latch')
+    if state == 'Charging':
+      self._dbusserviceev['/Status'] = 2
+    elif state == 'Disconnected':
+      self._dbusserviceev['/Status'] = 0
+    elif state in ('Stopped', 'Complete') and latch in ('Engaged', 'Disengaged'):
+      self._dbusserviceev['/Status'] = 1 if latch == 'Engaged' else 0
 
   def _getConfig(self):
     config = configparser.ConfigParser()
@@ -505,8 +521,9 @@ class DbusTeslaAPIService:
            #self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
     except Exception as e:
       error_message = str(e)
-      if self._request_timeout_string in error_message:
-        self._dbusserviceev['/Status'] = 0
+      if self._request_timeout_string in error_message or isinstance(e, requests.exceptions.Timeout):
+        # A sleeping/unreachable car provides no new evidence about its plug.
+        # Keep the last observed status; a fresh response will update it normally.
         # self._dbusserviceev['/Mode'] = "Car Sleeping"
         self._wait_seconds = 60 * 5
         self._showInfoMessage('Car Sleeping')

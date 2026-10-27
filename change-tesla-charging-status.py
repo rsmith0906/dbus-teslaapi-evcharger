@@ -87,6 +87,7 @@ class DbusTeslaAPIService:
                     raise RuntimeError(f"Subprocess command failed: {error_output}") from e
     except Exception as e:
         logging.critical('Error at %s', 'main', exc_info=e)
+        raise
 
   def _getConfig(self):
     config = configparser.ConfigParser()
