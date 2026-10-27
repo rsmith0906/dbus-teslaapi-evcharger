@@ -19,6 +19,7 @@ The screenshot in `Photon Farm` shows the desired result: an **EVCS** tile on th
 | [07-companion-scripts.md](07-companion-scripts.md) | `change-tesla-charging-rate.py`, `change-tesla-charging-status.py`, TokenRefresh service |
 | [08-issues-and-improvements.md](08-issues-and-improvements.md) | Bugs, smells, and concrete improvement candidates spotted during the audit |
 | [09-references.md](09-references.md) | Every external doc cited while writing these notes |
+| [10-deploy-to-pi.md](10-deploy-to-pi.md) | Deploying from this checkout to the Venus OS Pi: copy, fix line endings, restart, verify, roll back |
 
 ## TL;DR
 
