@@ -6,7 +6,7 @@ Everything under "Changes made" lives **only on the Pi**. The Node-RED flow (`/d
 
 ## The auto-start flow, in one paragraph
 
-A Node-RED tab called **Tesla Auto-Start Charging** on the Victron Pi starts charging the car at 5 A when the house has spare energy: battery above 50%, or battery at least 20% **and** solar above 1600 W. It combines three Victron readings (battery SOC from the SmartShunt `com.victronenergy.battery/289`, the EV charger `/Status` from this driver's `com.victronenergy.evcharger/41`, and MPPT solar `/Dc/Pv/Power`). It checks at most every 5 minutes. Since 2026-10-29 it starts **as often as needed while the car stays plugged in**, because solar goes up and down during the day. It waits at least 30 minutes between attempts, and longer after a failed start (see "Current start rules" below). The pause is stored in `/data/tesla/auto-start-state.json` before the command is sent. The start itself runs `python /data/tesla/node-red-tesla.py start`.
+A Node-RED tab called **Tesla Auto-Start Charging** on the Victron Pi starts charging the car at 5 A when the house has spare energy: battery above 50%, or battery at least 20% **and** solar above 700 W. The solar threshold was 1600 W until 2026-10-30. It combines three Victron readings (battery SOC from the SmartShunt `com.victronenergy.battery/289`, the EV charger `/Status` from this driver's `com.victronenergy.evcharger/41`, and MPPT solar `/Dc/Pv/Power`). It checks at most every 5 minutes. Since 2026-10-29 it starts **as often as needed while the car stays plugged in**, because solar goes up and down during the day. It waits at least 30 minutes between attempts, and longer after a failed start (see "Current start rules" below). The pause is stored in `/data/tesla/auto-start-state.json` before the command is sent. The start itself runs `python /data/tesla/node-red-tesla.py start`.
 
 ## Current start rules (since 2026-10-29)
 
@@ -15,7 +15,7 @@ Each check, the start rules node (`da4587e06d759e91`) reads the Victron EV charg
 | Victron status | What the flow does |
 |---|---|
 | `0` Disconnected | Clears any pause (writes `{}`), so a new plug-in can start right away. No start. |
-| `1` Connected | If a pause is active, it waits. Otherwise, if battery > 50%, or battery ≥ 20% **and** solar > 1600 W, it saves a 30-minute pause and then starts. |
+| `1` Connected | If a pause is active, it waits. Otherwise, if battery > 50%, or battery ≥ 20% **and** solar > 700 W, it saves a 30-minute pause and then starts. |
 | `2` Charging, `3` Charged | Nothing. |
 | anything else (e.g. `10`, set by the driver on errors, `dbus-teslaapi-evcharger.py:533`) | Waits. No start. |
 
@@ -29,6 +29,7 @@ The saved file looks like `{"attempted_at": <unix time>, "retry_after": <unix ti
 Things to know:
 - **Stopping by hand doesn't stick in sunshine.** If you stop charging yourself while the rule passes, it will restart within about 30 minutes.
 - **A full car shows as Connected.** The driver maps `Complete` with the latch engaged to status 1 (`dbus-teslaapi-evcharger.py:177`). So the flow may try to start a full car. The 3-hour failure pause limits that cost. The error Tesla returns for a full car hasn't been seen yet.
+- **Why 700 W.** The car charges on 120 V. At the flow's 5 A, it draws about 600 W (120 V × 5 A). So 700 W of solar covers the charge with a small margin. The user changed this from 1600 W on 2026-10-30.
 - **No automatic stop when solar drops.** Only the separate "Low battery with Car Charging" flow stops charging, when the house battery reaches 5–10%.
 
 Thresholds and pause lengths are constants at the top of the two function nodes.
