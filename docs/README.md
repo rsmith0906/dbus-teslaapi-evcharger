@@ -20,6 +20,7 @@ The screenshot in `Photon Farm` shows the desired result: an **EVCS** tile on th
 | [08-issues-and-improvements.md](08-issues-and-improvements.md) | Bugs, smells, and concrete improvement candidates spotted during the audit |
 | [09-references.md](09-references.md) | Every external doc cited while writing these notes |
 | [10-deploy-to-pi.md](10-deploy-to-pi.md) | Deploying from this checkout to the Venus OS Pi: copy, fix line endings, restart, verify, roll back |
+| [11-plug-detection-and-auto-start.md](11-plug-detection-and-auto-start.md) | Node-RED auto-start flow, the 2026-10-28 fixes, Tesla API cost, and the Bluetooth plug-detection plan |
 
 ## TL;DR
 
