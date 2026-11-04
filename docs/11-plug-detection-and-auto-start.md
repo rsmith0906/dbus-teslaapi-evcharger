@@ -22,9 +22,12 @@ Each check, the start rules node (`da4587e06d759e91`) reads the Victron EV charg
 If the start command fails, **Rearm/pause after failed start** (`5e1a7c0d2b9f4a01`) replaces the pause:
 - The car said `could not execute command: disconnected` (Victron status was stale) → try again in **30 min**.
 - The car was still `offline or asleep` after the helper's 2-minute wake wait → **30 min** ("Car did not wake").
+- The command timed out (`timed out` or `deadline exceeded`) → **10 min** ("Car timed out"). Added 2026-11-04 after a start failed for an unknown reason and lost 3 hours of sun. Whether a timeout caused that failure was not confirmed.
 - Any other error (bad token, usage cap, possibly a full car) → wait **3 h**. A constant error then can't wake the car every 30 minutes.
 
-The saved file looks like `{"attempted_at": <unix time>, "retry_after": <unix time>, "reason": "Started recently" | "Car said unplugged" | "Car did not wake" | "Start failed"}`. The rule node's status text shows the reason and the next try time.
+The saved file looks like `{"attempted_at": <unix time>, "retry_after": <unix time>, "reason": "Started recently" | "Car said unplugged" | "Car did not wake" | "Car timed out" | "Start failed"}`. The rule node's status text shows the reason and the next try time.
+
+Each failed start also adds a line with the time, reason and error text to `/data/tesla/auto-start-errors.log`, so the cause can be read later. The file is created on the first failure and is not rotated. Backup from this change: `flows.json.pre-timeout-retry-*`.
 
 Things to know:
 - **Stopping by hand doesn't stick in sunshine.** If you stop charging yourself while the rule passes, it will restart within about 30 minutes.
