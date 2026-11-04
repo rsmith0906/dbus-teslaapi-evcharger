@@ -61,3 +61,24 @@ class DriverSleepTests(unittest.TestCase):
             d.read_data = lambda _: cache
             d._restore_cached_connection_status()
             self.assertEqual(d._dbusserviceev['/Status'], 0)
+
+    def test_data_request_includes_location(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            token = Path(folder) / 'token.txt'
+            token.write_text('token')
+            response = Mock(json=Mock(return_value={'response': {}}))
+            get = Mock(return_value=response)
+            saved = namespace['requests']
+            self.addCleanup(namespace.__setitem__, 'requests', saved)
+            namespace.update(token_file_path=str(token), json=__import__('json'),
+                             requests=types.SimpleNamespace(get=get, exceptions=saved.exceptions))
+            d = self.driver(0)
+            d._getTeslaAPIStatusUrl = lambda: 'url'
+            d.get_token_is_expired = lambda: False
+            d._lastCheckData = datetime(2000, 1, 1)
+            d.save_data = Mock()
+            d._getTeslaAPIData()
+            endpoints = get.call_args.kwargs['params']['endpoints'].split(';')
+            self.assertIn('location_data', endpoints)
+            self.assertIn('charge_state', endpoints)

@@ -259,7 +259,8 @@ class DbusTeslaAPIService:
 
     # Fleet API requires an explicit endpoints list; without it the response omits
     # the state blocks this service reads (charge_state / vehicle_state / drive_state).
-    params = {'endpoints': 'charge_state;vehicle_state;drive_state'}
+    # location_data adds drive_state latitude/longitude for the Node-RED away check.
+    params = {'endpoints': 'charge_state;vehicle_state;drive_state;location_data'}
 
     checkDiff = datetime.now() - self._lastCheckData
     checkSecs = checkDiff.total_seconds()
