@@ -175,7 +175,10 @@ class DbusTeslaAPIService:
     elif state == 'Disconnected':
       self._dbusserviceev['/Status'] = 0
     elif state in ('Stopped', 'Complete') and latch in ('Engaged', 'Disengaged'):
-      self._dbusserviceev['/Status'] = 1 if latch == 'Engaged' else 0
+      if latch != 'Engaged':
+        self._dbusserviceev['/Status'] = 0
+      else:
+        self._dbusserviceev['/Status'] = 3 if state == 'Complete' else 1
 
   def _getConfig(self):
     config = configparser.ConfigParser()
@@ -476,7 +479,8 @@ class DbusTeslaAPIService:
 
                 if charge_state == 'Stopped' or charging_state == 'Complete':
                     if charge_port_latch == 'Engaged':
-                      self._dbusserviceev['/Status'] = 1
+                      # 3 = Charged: at its limit. Auto-start only acts on this if the limit is below 80%.
+                      self._dbusserviceev['/Status'] = 3 if charge_state == 'Complete' else 1
                     else:
                       self._dbusserviceev['/Status'] = 0
                       self._dbusserviceev['/ChargingTime'] = 0

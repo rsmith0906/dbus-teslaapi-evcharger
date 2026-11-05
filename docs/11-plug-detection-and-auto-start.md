@@ -23,15 +23,19 @@ If the start command fails, **Rearm/pause after failed start** (`5e1a7c0d2b9f4a0
 - The car said `could not execute command: disconnected` (Victron status was stale) → try again in **30 min**.
 - The car was still `offline or asleep` after the helper's 2-minute wake wait → **30 min** ("Car did not wake").
 - The command timed out (`timed out` or `deadline exceeded`) → **10 min** ("Car timed out"). Added 2026-11-04 after a start failed for an unknown reason and lost 3 hours of sun. Whether a timeout caused that failure was not confirmed.
-- Any other error (bad token, usage cap, possibly a full car) → wait **3 h**. A constant error then can't wake the car every 30 minutes.
+- The car said `could not execute command: complete` (it is full and the driver has not reported Charged yet) → **10 min** ("Car is full").
+- Any other error (bad token, usage cap) → **30 min**. It was 3 h until 2026-11-05. A constant error can now cause a wake and start every 30 minutes in good conditions, up to about 2 cents per wake.
 
-The saved file looks like `{"attempted_at": <unix time>, "retry_after": <unix time>, "reason": "Started recently" | "Car said unplugged" | "Car did not wake" | "Car timed out" | "Start failed"}`. The rule node's status text shows the reason and the next try time.
+**Charge limit (since 2026-11-05):** if the driver's last reading of the car's charge limit is below 80%, the start command raises it to 80% just before starting. This only happens as part of a start, so it needs the battery or solar rules to pass. A higher limit is never lowered, and an unknown limit (no cache after a reboot) is left alone. The reading can be old if the car has been asleep. Live test on 2026-11-05: the limit went from 60 to 80 and the car charged at 5 A.
+
+**Full car (since 2026-11-05):** the driver reports `Complete` with the latch engaged as status 3 (Charged), not 1 (Connected). The rules make no Tesla calls at status 3 unless the limit is below 80%.
+
+The saved file looks like `{"attempted_at": <unix time>, "retry_after": <unix time>, "reason": "Started recently" | "Car said unplugged" | "Car did not wake" | "Car timed out" | "Car is full" | "Start failed"}`. The rule node's status text shows the reason and the next try time.
 
 Each failed start also adds a line with the time, reason and error text to `/data/tesla/auto-start-errors.log`, so the cause can be read later. The file is created on the first failure and is not rotated. Backup from this change: `flows.json.pre-timeout-retry-*`.
 
 Things to know:
 - **Stopping by hand doesn't stick in sunshine.** If you stop charging yourself while the rule passes, it will restart within about 30 minutes.
-- **A full car shows as Connected.** The driver maps `Complete` with the latch engaged to status 1 (`dbus-teslaapi-evcharger.py:177`). So the flow may try to start a full car. The 3-hour failure pause limits that cost. The error Tesla returns for a full car hasn't been seen yet.
 - **Why 700 W.** The car charges on 120 V. At the flow's 5 A, it draws about 600 W (120 V × 5 A). So 700 W of solar covers the charge with a small margin. The user changed this from 1600 W on 2026-10-30.
 - **No automatic stop when solar drops.** Only the separate "Low battery with Car Charging" flow stops charging, when the house battery reaches 5–10%.
 

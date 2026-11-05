@@ -46,7 +46,7 @@ class DriverSleepTests(unittest.TestCase):
                     d.get_new_token.assert_not_called()
 
     def test_restore_known_status_after_restart(self):
-        for state, latch, expected in [('Stopped','Engaged',1), ('Complete','Engaged',1),
+        for state, latch, expected in [('Stopped','Engaged',1), ('Complete','Engaged',3),
                                        ('Charging','Engaged',2), ('Disconnected','Disengaged',0),
                                        ('Stopped','Disengaged',0)]:
             d = self.driver(0)
@@ -82,3 +82,18 @@ class DriverSleepTests(unittest.TestCase):
             endpoints = get.call_args.kwargs['params']['endpoints'].split(';')
             self.assertIn('location_data', endpoints)
             self.assertIn('charge_state', endpoints)
+
+    def test_full_car_reports_charged_not_connected(self):
+        for state, expected in [('Complete', 3), ('Stopped', 1)]:
+            with self.subTest(state=state):
+                d = self.driver(0)
+                d._dbusserviceev.update({'/Ac/L1/Power': 0, '/Current': 0, '/Position': 0})
+                d._dbusservicebatt = {}
+                d.resetSavedChargeStart = Mock()
+                d._getCarDriving = lambda: False
+                d._getTeslaAPIData = lambda: {'response': {'charge_state': {
+                    'charging_state': state, 'charge_port_latch': 'Engaged', 'battery_level': 59,
+                    'charger_power': 0, 'charger_voltage': 0, 'charger_actual_current': 0,
+                    'charge_energy_added': 1, 'charge_current_request_max': 12}}}
+                self.assertTrue(d._update())
+                self.assertEqual(d._dbusserviceev['/Status'], expected)
