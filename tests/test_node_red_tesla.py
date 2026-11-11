@@ -1,24 +1,81 @@
 import importlib.util
 from pathlib import Path
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 spec = importlib.util.spec_from_file_location('node_red_tesla',
     Path(__file__).resolve().parents[1] / 'node-red-tesla.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
+ASLEEP = RuntimeError('vehicle unavailable: vehicle is offline or asleep')
 
-class CommandTests(unittest.TestCase):
-    def test_set_current_before_start(self):
+
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+class StartTests(unittest.TestCase):
+    def start(self, controller, **kwargs):
+        clock = FakeClock()
+        module.start(controller, sleep=clock.sleep, clock=clock, **kwargs)
+        return clock
+
+    def test_wakes_then_sets_5_amps_then_starts(self):
         controller = Mock()
-        module.start(controller)
+        self.start(controller)
         self.assertEqual(controller.mock_calls, [
-            unittest.mock.call.run(5), unittest.mock.call.execute(['charging-start'])])
+            call.execute(['wake']), call.run(5), call.execute(['charging-start'])])
+
+    def test_asleep_reply_to_wake_is_not_an_error(self):
+        controller = Mock()
+        controller.execute.side_effect = [ASLEEP, None]
+        self.start(controller)
+        controller.run.assert_called_once_with(5)
+
+    def test_other_wake_error_fails(self):
+        controller = Mock()
+        controller.execute.side_effect = RuntimeError('token expired')
+        with self.assertRaises(RuntimeError):
+            self.start(controller)
+        controller.run.assert_not_called()
+
+    def test_retries_while_asleep_and_rewakes_once(self):
+        controller = Mock()
+        controller.run.side_effect = [ASLEEP] * 6 + [None]
+        self.start(controller)
+        self.assertEqual(controller.run.call_count, 7)
+        self.assertEqual(controller.execute.call_args_list,
+                         [call(['wake']), call(['wake']), call(['charging-start'])])
+
+    def test_gives_up_after_wake_wait(self):
+        controller = Mock()
+        controller.run.side_effect = ASLEEP
+        with self.assertRaises(RuntimeError):
+            clock = FakeClock()
+            module.start(controller, sleep=clock.sleep, clock=clock)
+        self.assertGreaterEqual(clock.now, module.WAKE_WAIT_SECONDS)
+        self.assertNotIn(call(['charging-start']), controller.execute.call_args_list)
 
     def test_failed_current_setting_never_starts(self):
         controller = Mock()
         controller.run.side_effect = RuntimeError('failed')
         with self.assertRaises(RuntimeError):
-            module.start(controller)
-        controller.execute.assert_not_called()
+            self.start(controller)
+        self.assertNotIn(call(['charging-start']), controller.execute.call_args_list)
+
+    def test_low_charge_limit_raised_to_80_before_start(self):
+        for limit, expected in [(60, True), (80, False), (90, False), (None, False)]:
+            with self.subTest(limit=limit):
+                controller = Mock()
+                self.start(controller, charge_limit=limit)
+                raised = call(['charging-set-limit', '80']) in controller.execute.call_args_list
+                self.assertEqual(raised, expected)
+                self.assertEqual(controller.execute.call_args_list[-1], call(['charging-start']))

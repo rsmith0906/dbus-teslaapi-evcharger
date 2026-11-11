@@ -6,30 +6,75 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+import time
 
 DATA_DIR = Path('/data/tesla')
 DRIVER_CONFIG = Path('/data/dbus-teslaapi-evcharger/config.ini')
+MIN_CHARGE_LIMIT = 80
+
+
+def read_charge_limit():
+    # Last limit the driver saw, from its cache file. None if there is no cache yet
+    # (after a reboot). Unknown must not change the limit: it could lower a higher one.
+    cfg = configparser.ConfigParser()
+    cfg.read(str(DRIVER_CONFIG))
+    try:
+        cache = json.loads((Path('/tmp') / (cfg['DEFAULT']['VehicleId'] + '.json')).read_text())
+    except FileNotFoundError:
+        return None
+    return cache['response']['charge_state'].get('charge_limit_soc')
 
 
 def read_inputs():
-    cfg = configparser.ConfigParser()
-    cfg.read(str(DRIVER_CONFIG))
-    vehicle_id = cfg['DEFAULT']['VehicleId']
-    if not vehicle_id.isdigit():
-        raise ValueError('VehicleId must be numeric')
-    cache_path = Path('/tmp') / (vehicle_id + '.json')
-    with cache_path.open() as cache_file:
-        import os
-        mtime = os.fstat(cache_file.fileno()).st_mtime
-        cache = json.load(cache_file)
+    # Only the saved plug-in session. Plug state comes from Victron's EV charger
+    # status in Node-RED, so a sleeping car (stale Tesla cache) cannot block a start.
     state_path = DATA_DIR / 'auto-start-state.json'
     state = json.loads(state_path.read_text()) if state_path.exists() else None
-    return {'charge': cache['response']['charge_state'], 'cacheMtime': mtime,
-            'session': state}
+    return {'session': state, 'charge_limit': read_charge_limit()}
 
 
-def start(controller):
-    controller.run(5)
+ASLEEP_ERROR = 'offline or asleep'
+WAKE_WAIT_SECONDS = 120     # Node-RED exec timer is 180 s
+RETRY_INTERVAL_SECONDS = 10
+REWAKE_AFTER_SECONDS = 45
+
+
+def is_asleep_error(error):
+    return ASLEEP_ERROR in str(error).lower()
+
+
+def wake(controller):
+    # The installed tesla-control returns from "wake" as soon as Tesla accepts the
+    # request, while the car is still asleep (pkg/connector/inet/inet.go:219-227
+    # treats a 200 "asleep" reply as success). An asleep error here is not fatal.
+    try:
+        controller.execute(['wake'])
+    except RuntimeError as error:
+        if not is_asleep_error(error):
+            raise
+
+
+def start(controller, charge_limit=None, sleep=time.sleep, clock=time.monotonic):
+    # Wake first: the car is usually asleep when Victron status alone triggers a start.
+    # Then retry the first real command until the car is online, re-sending the wake
+    # once, so a slow wake-up does not fail the whole start.
+    wake(controller)
+    began = clock()
+    rewoken = False
+    while True:
+        try:
+            controller.run(5)
+            break
+        except RuntimeError as error:
+            elapsed = clock() - began
+            if not is_asleep_error(error) or elapsed >= WAKE_WAIT_SECONDS:
+                raise
+            if not rewoken and elapsed >= REWAKE_AFTER_SECONDS:
+                wake(controller)
+                rewoken = True
+            sleep(RETRY_INTERVAL_SECONDS)
+    if charge_limit is not None and charge_limit < MIN_CHARGE_LIMIT:
+        controller.execute(['charging-set-limit', str(MIN_CHARGE_LIMIT)])
     controller.execute(['charging-start'])
 
 
@@ -48,7 +93,7 @@ def main(argv=None):
         spec.loader.exec_module(rate)
         with (DATA_DIR / '.charging-rate.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            start(rate.ChargingController(DATA_DIR))
+            start(rate.ChargingController(DATA_DIR), charge_limit=read_charge_limit())
         print('Auto-start command succeeded at 5 A', flush=True)
         return 0
     except Exception as error:
