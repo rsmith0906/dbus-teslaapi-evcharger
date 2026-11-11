@@ -10,6 +10,7 @@ import time
 
 DATA_DIR = Path('/data/tesla')
 DRIVER_CONFIG = Path('/data/dbus-teslaapi-evcharger/config.ini')
+CACHE_DIR = Path('/tmp')    # the driver writes /tmp/<VehicleId>.json
 MIN_CHARGE_LIMIT = 80
 
 
@@ -18,8 +19,12 @@ def read_charge_limit():
     # (after a reboot). Unknown must not change the limit: it could lower a higher one.
     cfg = configparser.ConfigParser()
     cfg.read(str(DRIVER_CONFIG))
+    vehicle_id = cfg['DEFAULT']['VehicleId']
+    if not vehicle_id.isdigit():
+        # It becomes part of a file path below.
+        raise ValueError('VehicleId must be numeric')
     try:
-        cache = json.loads((Path('/tmp') / (cfg['DEFAULT']['VehicleId'] + '.json')).read_text())
+        cache = json.loads((CACHE_DIR / (vehicle_id + '.json')).read_text())
     except FileNotFoundError:
         return None
     return cache['response']['charge_state'].get('charge_limit_soc')

@@ -81,6 +81,41 @@ class StartTests(unittest.TestCase):
                 self.assertEqual(controller.execute.call_args_list[-1], call(['charging-start']))
 
 
+class ReadChargeLimitTests(unittest.TestCase):
+    """read_charge_limit() decides whether start raises the limit to 80%."""
+
+    def read(self, vehicle_id='1492677889280637', cache=None):
+        import json, tempfile
+        from unittest.mock import patch
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        root = Path(folder.name)
+        (root / 'config.ini').write_text(f'[DEFAULT]\nVehicleId = {vehicle_id}\n')
+        if cache is not None:
+            (root / f'{vehicle_id}.json').write_text(cache if isinstance(cache, str) else json.dumps(cache))
+        with patch.object(module, 'DRIVER_CONFIG', root / 'config.ini'), patch.object(module, 'CACHE_DIR', root):
+            return module.read_charge_limit()
+
+    def test_returns_the_cached_limit(self):
+        for limit in [60, 80, 90]:
+            self.assertEqual(self.read(cache={'response': {'charge_state': {'charge_limit_soc': limit}}}), limit)
+
+    def test_unknown_limit_is_none_so_start_leaves_it_alone(self):
+        self.assertIsNone(self.read())  # no cache file, e.g. after a reboot
+        self.assertIsNone(self.read(cache={'response': {'charge_state': {}}}))
+
+    def test_non_numeric_vehicle_id_is_refused(self):
+        for bad in ['../etc/passwd', '123abc', '']:
+            with self.subTest(vehicle_id=bad), self.assertRaises(ValueError):
+                self.read(vehicle_id=bad)
+
+    def test_broken_cache_fails_loudly(self):
+        with self.assertRaises(ValueError):
+            self.read(cache='not json')
+        with self.assertRaises(KeyError):
+            self.read(cache={'response': {}})
+
+
 class WakeOperationTests(unittest.TestCase):
     """`node-red-tesla.py wake`, used by the hourly wake flow."""
 
