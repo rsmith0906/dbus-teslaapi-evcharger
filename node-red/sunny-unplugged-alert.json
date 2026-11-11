@@ -1,0 +1,249 @@
+[
+    {
+        "id": "sunny_alert_tab",
+        "type": "tab",
+        "label": "Sunny Unplugged Alert",
+        "disabled": false,
+        "info": "Every 5 minutes: Pushbullet alert when solar > 700 W, the Victron EV charger says Disconnected, it is 9 AM-4 PM Central, and the car is within radius_m of /data/tesla/home-location.json (car location from the driver's /tmp/<VehicleId>.json cache). At most one alert per 30 minutes. No Tesla API calls.",
+        "env": []
+    },
+    {
+        "id": "sunny_ev_status",
+        "type": "victron-input-evcharger",
+        "z": "sunny_alert_tab",
+        "service": "com.victronenergy.evcharger/41",
+        "path": "/Status",
+        "serviceObj": {
+            "service": "com.victronenergy.evcharger/41",
+            "name": "TESLACHARGER"
+        },
+        "pathObj": {
+            "path": "/Status",
+            "type": "enum",
+            "name": "Status",
+            "enum": {
+                "0": "Disconnected",
+                "1": "Connected",
+                "2": "Charging",
+                "3": "Charged",
+                "4": "Waiting for sun",
+                "5": "Waiting for RFID",
+                "6": "Waiting for start",
+                "7": "Low SOC",
+                "8": "Ground fault",
+                "9": "Welded contacts",
+                "10": "CP Input shorted",
+                "11": "Residual current detected",
+                "12": "Under voltage detected",
+                "13": "Overvoltage detected",
+                "14": "Overheating detected"
+            }
+        },
+        "initial": "",
+        "name": "EVChargerStatus",
+        "onlyChanges": false,
+        "outputs": 1,
+        "x": 150,
+        "y": 80,
+        "wires": [
+            [
+                "sunny_remember"
+            ]
+        ]
+    },
+    {
+        "id": "sunny_pv_power",
+        "type": "victron-input-system",
+        "z": "sunny_alert_tab",
+        "service": "com.victronenergy.system/0",
+        "path": "/Dc/Pv/Power",
+        "serviceObj": {
+            "service": "com.victronenergy.system/0",
+            "name": "Venus system"
+        },
+        "pathObj": {
+            "path": "/Dc/Pv/Power",
+            "type": "float",
+            "name": "MPPTs - power (W)"
+        },
+        "name": "PVPower",
+        "onlyChanges": false,
+        "roundValues": "0",
+        "outputs": 1,
+        "x": 130,
+        "y": 140,
+        "wires": [
+            [
+                "sunny_remember"
+            ]
+        ]
+    },
+    {
+        "id": "sunny_remember",
+        "type": "function",
+        "z": "sunny_alert_tab",
+        "name": "Remember latest reading",
+        "func": "flow.set(msg.topic, msg.payload);\nreturn null;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 110,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "sunny_tick",
+        "type": "inject",
+        "z": "sunny_alert_tab",
+        "name": "Every 5 minutes",
+        "props": [],
+        "repeat": "300",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "60",
+        "topic": "",
+        "x": 140,
+        "y": 220,
+        "wires": [
+            [
+                "sunny_read_cache"
+            ]
+        ]
+    },
+    {
+        "id": "sunny_read_cache",
+        "type": "file in",
+        "z": "sunny_alert_tab",
+        "name": "Read Tesla cache (no API)",
+        "filename": "/tmp/1492677889280637.json",
+        "filenameType": "str",
+        "format": "utf8",
+        "chunk": false,
+        "sendError": false,
+        "encoding": "utf8",
+        "allProps": false,
+        "x": 360,
+        "y": 220,
+        "wires": [
+            [
+                "sunny_keep_cache"
+            ]
+        ]
+    },
+    {
+        "id": "sunny_keep_cache",
+        "type": "function",
+        "z": "sunny_alert_tab",
+        "name": "Keep cache text",
+        "func": "msg.cache = msg.payload;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 580,
+        "y": 220,
+        "wires": [
+            [
+                "sunny_read_home"
+            ]
+        ]
+    },
+    {
+        "id": "sunny_read_home",
+        "type": "file in",
+        "z": "sunny_alert_tab",
+        "name": "Read home location",
+        "filename": "/data/tesla/home-location.json",
+        "filenameType": "str",
+        "format": "utf8",
+        "chunk": false,
+        "sendError": false,
+        "encoding": "utf8",
+        "allProps": false,
+        "x": 780,
+        "y": 220,
+        "wires": [
+            [
+                "sunny_rules"
+            ]
+        ]
+    },
+    {
+        "id": "sunny_rules",
+        "type": "function",
+        "z": "sunny_alert_tab",
+        "name": "Sunny & unplugged & home?",
+        "func": "const SOLAR_WATTS = 700;\nconst REPEAT_MINUTES = 30;\nconst FIRST_HOUR = 9;  // Central time; alerts from 9:00\nconst LAST_HOUR = 16;  // up to 15:59\nconst TIME_ZONE = 'America/Chicago';\n\nconst quiet = (text, fill = 'grey') => { node.status({fill, shape: 'ring', text}); return null; };\n\nif (msg.error) return quiet('File problem: ' + msg.error.message, 'red');\nlet car, home;\ntry {\n    car = JSON.parse(msg.cache).response.drive_state;\n    home = JSON.parse(msg.payload);\n} catch (e) {\n    return quiet('Bad JSON: ' + e.message, 'red');\n}\nif (!car || !Number.isFinite(car.latitude) || !Number.isFinite(car.longitude))\n    return quiet('No car location in Tesla cache', 'red');\nif (!home || !Number.isFinite(home.latitude) || !Number.isFinite(home.longitude) || !Number.isFinite(home.radius_m))\n    return quiet('Bad /data/tesla/home-location.json', 'red');\n\nconst solar = flow.get('PVPower');\nconst status = flow.get('EVChargerStatus');\nif (!Number.isFinite(solar) || !Number.isInteger(status)) return quiet('Waiting for Victron readings');\nif (status !== 0) return quiet('Plugged in');\nif (solar <= SOLAR_WATTS) return quiet(`Not sunny (${Math.round(solar)} W)`);\n\nconst now = Date.now();\nconst hour = Number(new Intl.DateTimeFormat('en-US', {timeZone: TIME_ZONE, hour: 'numeric', hourCycle: 'h23'}).format(now));\nif (hour < FIRST_HOUR || hour >= LAST_HOUR) return quiet('Outside 9 AM-4 PM Central');\n\nconst rad = d => d * Math.PI / 180;\nconst a = Math.sin(rad(car.latitude - home.latitude) / 2) ** 2 +\n    Math.cos(rad(home.latitude)) * Math.cos(rad(car.latitude)) * Math.sin(rad(car.longitude - home.longitude) / 2) ** 2;\nconst meters = 2 * 6371000 * Math.asin(Math.sqrt(a));\nif (meters > home.radius_m) return quiet(`Car away (${(meters / 1000).toFixed(1)} km)`);\n\nconst last = context.get('lastAlertAt');\nif (last && now - last < REPEAT_MINUTES * 60 * 1000) return quiet(`Waiting ${REPEAT_MINUTES} min since last alert`);\n\ncontext.set('lastAlertAt', now);\nnode.status({fill: 'yellow', shape: 'dot', text: `Alert sent at ${Math.round(solar)} W`});\nmsg.topic = 'Car not plugged in';\nmsg.payload = `Solar is ${Math.round(solar)} W and the car is unplugged at home.`;\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1010,
+        "y": 220,
+        "wires": [
+            [
+                "sunny_push"
+            ]
+        ]
+    },
+    {
+        "id": "sunny_push",
+        "type": "pushbullet",
+        "z": "sunny_alert_tab",
+        "config": "7c3e0c966c39354b",
+        "pushtype": "note",
+        "title": "Car not plugged in",
+        "chan": "",
+        "name": "Plug in the car",
+        "x": 1230,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "sunny_catch",
+        "type": "catch",
+        "z": "sunny_alert_tab",
+        "name": "File errors",
+        "scope": [
+            "sunny_read_cache",
+            "sunny_read_home"
+        ],
+        "uncaught": false,
+        "x": 360,
+        "y": 300,
+        "wires": [
+            [
+                "sunny_file_error"
+            ]
+        ]
+    },
+    {
+        "id": "sunny_file_error",
+        "type": "function",
+        "z": "sunny_alert_tab",
+        "name": "Pass file error to rules",
+        "func": "// File-in errors come here so the rules node shows a red status instead of going quiet.\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 600,
+        "y": 300,
+        "wires": [
+            [
+                "sunny_rules"
+            ]
+        ]
+    }
+]

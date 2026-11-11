@@ -1,164 +1,162 @@
-import os
+#!/usr/bin/env python3
+"""Set Tesla charging current from Node-RED; exit nonzero on failure.
+
+Credentials are shared with the driver in /data/tesla. --check runs a signed
+ping using the same credentials and executable without changing charge settings.
+"""
+import argparse
 import json
-import requests
-import subprocess
-import time
-import sys
 import logging
-from pushbullet import Pushbullet
-import configparser # for config/ini file
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
 
-amps = sys.argv[1]
-if amps:
-    print(f"Changing charging rate to: {amps}") 
-else:
-    raise RuntimeError(f"No AMPs Provided")
+import requests
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = Path('/data/tesla')
+MAX_AMPS = 12
+COMMAND_TIMEOUT = 20
+AUTH_ERRORS = ('token', 'unauthorized', '401', 'authentication failed')
 
-# Load configurations from config.json
-config_file_path = os.path.join(script_dir, 'config.json')
-with open(config_file_path, 'r') as config_file:
-    config = json.load(config_file)
 
-authtoken_file_path = os.path.join(script_dir, 'authtoken.txt')
-token_file_path = os.path.join(script_dir, 'token.txt')
-token_expire_file_path = os.path.join(script_dir, 'tokenexpire.txt')
-
-# Setting environment variables
-os.environ['PATH'] += ':/usr/local/bin:/usr/bin:/bin:/data/usr/local/go/bin'
-os.environ['TESLA_VIN'] = config['VIN']
-os.environ['TESLA_KEY_NAME'] = 'Tessy'
-os.environ['TESLA_KEY_FILE'] = '/data/tesla/private.pem'
-os.environ['TESLA_TOKEN_FILE'] = '/data/tesla/token.txt'
-
-# Adding Go bin to PATH
-go_path_output = subprocess.check_output(['/data/usr/local/go/bin/go', 'env', 'GOPATH']).decode().strip()
-os.environ['PATH'] += f':{go_path_output}/bin'
-
-class DbusTeslaAPIService:
-  pb = None
-
-  def __init__(self, productname='Tesla API', connection='Tesla API HTTP JSON service'):
-    config = self._getConfig()
-    global pb
-
-    pbApiKey = config['DEFAULT']['PushBulletKey']
-    pb = Pushbullet(pbApiKey)
-
-  def run(self):
+def parse_amps(value):
     try:
-        logging.info("Start")
+        amps = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError('amps must be a whole number')
+    if not 0 <= amps <= MAX_AMPS:
+        raise argparse.ArgumentTypeError('amps must be between 0 and 12')
+    return amps
 
-        attempt = 0
-        max_attempts = 2
 
-        while attempt < max_attempts:
+def atomic_write(path, content):
+    """Publish a complete token file, preserving runtime ownership."""
+    previous = path.stat() if path.exists() else None
+    fd, temporary = tempfile.mkstemp(prefix='.' + path.name, dir=str(path.parent))
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(content)
+        if previous and hasattr(os, 'chown'):
+            os.chown(temporary, previous.st_uid, previous.st_gid)
+        os.replace(temporary, str(path))
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+class ChargingController:
+    def __init__(self, data_dir=DATA_DIR):
+        self.data_dir = Path(data_dir)
+        with (self.data_dir / 'config.json').open() as stream:
+            self.config = json.load(stream)
+        self.env = os.environ.copy()
+        # Node-RED's non-login shell does not normally include its Go bin.
+        # Resolving it here avoids requiring a Go compiler on every invocation.
+        self.env['PATH'] = os.pathsep.join([
+            self.env.get('PATH', ''), str(Path.home() / 'go/bin'),
+            '/usr/local/bin', '/usr/bin', '/bin', '/data/usr/local/go/bin',
+        ])
+        self.executable = shutil.which('tesla-control', path=self.env['PATH'])
+        if not self.executable:
+            raise RuntimeError('tesla-control not found in PATH or ~/go/bin')
+        self.env['TESLA_VIN'] = self.config['VIN']
+        self.env['TESLA_KEY_FILE'] = str(self.data_dir / 'private.pem')
+        self.env['TESLA_TOKEN_FILE'] = str(self.data_dir / 'token.txt')
+
+    def token_expired(self):
+        token_path = self.data_dir / 'token.txt'
+        if not token_path.exists() or not token_path.read_text().strip():
+            return True
+        expiry_path = self.data_dir / 'tokenexpire.txt'
+        if not expiry_path.exists():
+            return True
+        expiration = time.mktime(time.strptime(
+            expiry_path.read_text().strip(), '%Y-%m-%d %H:%M:%S'))
+        return expiration <= time.time()
+
+    def refresh_token(self):
+        with (self.data_dir / 'authtoken.txt').open() as stream:
+            previous = json.load(stream)
+        response = requests.post(
+            'https://auth.tesla.com/oauth2/v3/token',
+            data={'grant_type': 'refresh_token',
+                  'client_id': self.config['CLIENT_ID'],
+                  'refresh_token': previous['refresh_token']},
+            timeout=(10, 20))
+        # Do not include the token response body in logs.
+        response.raise_for_status()
+        refreshed = response.json()
+        access_token = refreshed.get('access_token')
+        expires_in = int(refreshed.get('expires_in', 0))
+        if not access_token or expires_in <= 0:
+            raise RuntimeError('Tesla refresh response missing access token or valid expiry')
+        refreshed['refresh_token'] = refreshed.get('refresh_token') or previous['refresh_token']
+        expiration = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(
+            time.time() + max(0, expires_in - 1000)))
+        atomic_write(self.data_dir / 'authtoken.txt', json.dumps(refreshed))
+        atomic_write(self.data_dir / 'token.txt', access_token)
+        atomic_write(self.data_dir / 'tokenexpire.txt', expiration)
+
+    def run(self, amps=None, check=False):
+        if not check:
+            amps = parse_amps(str(amps))
+        self.execute(['ping'] if check else ['charging-set-amps', str(amps)])
+
+    def execute(self, operation):
+        """Send one signed operation, with at most one authentication retry."""
+        if self.token_expired():
+            self.refresh_token()
+        command = [self.executable, '-ble=false',
+                   '-key-file', self.env['TESLA_KEY_FILE'],
+                   '-token-file', self.env['TESLA_TOKEN_FILE']]
+        command += operation
+        for attempt in range(2):
+            result = subprocess.run(command, env=self.env, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True,
+                                    timeout=COMMAND_TIMEOUT)
+            if result.returncode == 0:
+                return
+            error = result.stderr.strip() or 'tesla-control exited with code %s' % result.returncode
+            if attempt == 0 and any(term in error.lower() for term in AUTH_ERRORS):
+                # Node-RED routes stderr directly to its error notification.
+                # A recovered authentication error must not emit a false alarm.
+                self.refresh_token()
+                continue
+            raise RuntimeError(error)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('amps', type=parse_amps, nargs='?', help='current setting (0-12 A)')
+    parser.add_argument('--check', action='store_true', help='signed ping; no charging change')
+    args = parser.parse_args(argv)
+    if (args.amps is None) == (not args.check):
+        parser.error('provide amps OR --check')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+    try:
+        # Exit 75 means temporarily busy. Do not queue stale Node-RED requests.
+        import fcntl
+        with (DATA_DIR / '.charging-rate.lock').open('a') as lock:
             try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                logging.error('Another charging-rate command is running; retry later')
+                return 75
+            controller = ChargingController(DATA_DIR)
+            controller.run(args.amps, check=args.check)
+        print('Tesla signed ping succeeded' if args.check else
+              'Charging current command accepted: %s A' % args.amps, flush=True)
+        return 0
+    except subprocess.TimeoutExpired:
+        logging.error('Tesla command timed out after %s seconds; outcome unknown', COMMAND_TIMEOUT)
+    except Exception as error:
+        logging.error('Charging command failed: %s', error)
+    return 1
 
-                if self.get_token_is_expired():
-                    self.get_new_token()
 
-                # Replace subprocess.call with subprocess.check_call to ensure an error is raised if the command fails
-                command = f"charging-set-amps"
-                result = subprocess.run(['tesla-control', command, amps], check=True, stderr=subprocess.PIPE)
-
-                push = pb.push_note(f"Tesla Charging Rate Change", f"Charging rate changed to {amps} amps.")
-
-                break  # Exit loop if successful
-            except subprocess.CalledProcessError as e:
-                # Check if the error output contains 'token'
-                logging.critical('Error at %s', 'main', exc_info=e)
-                push = pb.push_note("Tesla Charging Rate Error", e)
-
-                error_output = e.stderr.decode('utf-8')
-                if 'token' in error_output.lower():
-                    print("Token error detected, attempting to refresh token.")
-                    self.get_new_token()
-                    attempt += 1
-                    if attempt >= max_attempts:
-                        raise RuntimeError(f"Failed to resolve token issue after multiple attempts: {error_output}") from e
-                else:
-                    # If error is not related to token, re-raise with original error message
-                    raise RuntimeError(f"Subprocess command failed: {error_output}") from e
-
-    except Exception as e:
-        logging.critical('Error at %s', 'main', exc_info=e)
-
-  def get_new_token(self):
-    # Reading the refresh token from a json file
-    with open(authtoken_file_path, 'r') as file:
-        data = json.load(file)
-        refresh_token = data['refresh_token']
-
-    # Making a POST request to get a new auth token
-    url = 'https://auth.tesla.com/oauth2/v3/token'
-    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    data = {
-        'grant_type': 'refresh_token',
-        'client_id': config['CLIENT_ID'],
-        'refresh_token': refresh_token,
-        'scopes': 'user_data vehicle_device_data vehicle_cmds vehicle_charging_cmds'
-    }
-
-    response = requests.post(url, headers=headers, data=data)
-    response_data = response.json()
-
-    # Checking if the response contains 'refresh_token' and writing to authtoken.txt
-    if 'refresh_token' in response_data:
-        with open(authtoken_file_path, 'w') as file:
-            json.dump(response_data, file, indent=4)
-        print("New auth and refresh tokens saved to authtoken.txt.")
-    else:
-        print("Response does not contain a refresh token.")
-
-    # Extracting the access token, if available
-    auth_token = response_data.get('access_token', '')
-    expires_in = response_data.get('expires_in', 0)
-
-    expiration_date = time.time() + (expires_in - 1000)
-    expiration_date = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(expiration_date))
-
-    # Saving the new auth token if it's not empty
-    if auth_token:
-        print("New auth token saved to token.txt.")
-        with open(token_file_path, 'w') as token_file:
-            token_file.write(auth_token)
-
-        with open(token_expire_file_path, 'w') as token_expire_file:
-            token_expire_file.write(expiration_date)
-    else:
-        print("Auth token is empty. Token not saved.")
-
-  def get_token_is_expired(self):
-    if os.path.exists(token_expire_file_path):
-        with open(token_expire_file_path, 'r') as expire_file:
-            expiration_date = expire_file.read()
-            expiration_date = time.mktime(time.strptime(expiration_date, '%Y-%m-%d %H:%M:%S'))
-            if expiration_date < time.time():
-                print("Auth token is expired.")
-                return True
-    else:
-      return True
-    return False
-
-  def _getConfig(self):
-    config = configparser.ConfigParser()
-    config.read("%s/config.ini" % (os.path.dirname(os.path.realpath(__file__))))
-    return config
-
-def main():
-    #configure logging
-    logging.basicConfig(      format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                                datefmt='%Y-%m-%d %H:%M:%S',
-                                level=logging.INFO,
-                                handlers=[
-                                    logging.FileHandler("%s/current-set-charging-amps.log" % (os.path.dirname(os.path.realpath(__file__)))),
-                                    logging.StreamHandler()
-                            ])
-
-    instance = DbusTeslaAPIService()
-    instance.run()
-if __name__ == "__main__":
-  main()
-
+if __name__ == '__main__':
+    sys.exit(main())

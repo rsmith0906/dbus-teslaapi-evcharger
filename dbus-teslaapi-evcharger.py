@@ -12,10 +12,12 @@ else:
     from gi.repository import GLib as gobject
 import sys
 import time
+import math
 import json
 import subprocess
 import requests # for http GET
 import configparser # for config/ini file
+import dbus # for SystemBus(private=True) when registering a second service
 
 script_dir = '/data/tesla'
 
@@ -27,6 +29,8 @@ with open(config_file_path, 'r') as config_file:
 authtoken_file_path = os.path.join(script_dir, 'authtoken.txt')
 token_file_path = os.path.join(script_dir, 'token.txt')
 token_expire_file_path = os.path.join(script_dir, 'tokenexpire.txt')
+# {"latitude": .., "longitude": .., "radius_m": ..}; Pi only, shared with the Node-RED alert.
+home_location_file_path = os.path.join(script_dir, 'home-location.json')
 
 # Setting environment variables
 os.environ['PATH'] += ':/usr/local/bin:/usr/bin:/bin:/data/usr/local/go/bin'
@@ -59,6 +63,7 @@ class DbusTeslaAPIService:
     _a = lambda p, v: (str(round(v, 1)) + 'A')
     _w = lambda p, v: (str(round(v, 1)) + 'W')
     _v = lambda p, v: (str(round(v, 1)) + 'V')
+    _pct = lambda p, v: (str(round(v, 1)) + '%')
 
     self._dbusserviceev = VeDbusService("{}.http_{:02d}".format('com.victronenergy.evcharger', deviceinstance))
 
@@ -74,11 +79,22 @@ class DbusTeslaAPIService:
     self._token = None
     self._request_timeout_string = "Request Timeout"
     self._too_many_requests = "Too Many Requests"
-    self._wait_seconds = 30
+    # Fleet API vehicle_data is metered against a monthly billing/usage cap.
+    # Polling too fast (the old 30s) exhausts the free allowance in days and Tesla
+    # disables the account (403 "account disabled: EXCEEDED_LIMIT"). Keep the floors
+    # conservative: ~2 min while actively charging, ~5 min otherwise.
+    self._poll_charging = 120
+    self._poll_idle = 300
+    self._wait_seconds = self._poll_idle
     self._lastMessage = ""
     self._lastUpdate = 0
     self._cacheInverterPower = Decimal(0.0)
     self._cacheChargingPower = -1
+    # One paid wake (~2 cents) after the car parks at home unplugged, so a plug-in made
+    # after it falls asleep is still seen. A sleeping car cannot report a plug-in.
+    self._home_wake_delay = 15 * 60
+    self._sawDriving = False
+    self._homeWakeDueAt = None
 
     self.add_standard_paths(self._dbusserviceev, productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
@@ -92,6 +108,39 @@ class DbusTeslaAPIService:
           '/Ac/Energy/Forward': {'initial': 0, 'textformat': _kwh},
           '/StartStop': {'initial': 0, 'textformat': _startStop},
         })
+
+    # Preserve the last observed plug state across a restart while the car sleeps.
+    self._restore_cached_connection_status()
+
+    # Parallel battery service for Tesla SoC — appears in the VRM Battery block.
+    # Uses a high DeviceInstance (75) to avoid collisions with the real house bank,
+    # and minimal paths so dbus-systemcalc has nothing to roll up.
+    battery_instance = int(config['DEFAULT'].get('BatteryDeviceInstance', '75'))
+    # Use a private SystemBus connection — VeDbusService registers an object handler
+    # at '/' during __init__, and the EVCS service already claimed '/' on the default
+    # singleton SystemBus. A separate connection avoids the collision.
+    self._battbus = dbus.SystemBus(private=True)
+    self._dbusservicebatt = VeDbusService(
+        "{}.tesla_id{:02d}".format('com.victronenergy.battery', battery_instance),
+        bus=self._battbus)
+    self._dbusservicebatt.add_path('/Mgmt/ProcessName', __file__)
+    self._dbusservicebatt.add_path('/Mgmt/ProcessVersion',
+                                   'Tesla telemetry on Python ' + platform.python_version())
+    self._dbusservicebatt.add_path('/Mgmt/Connection', connection)
+    self._dbusservicebatt.add_path('/DeviceInstance', battery_instance)
+    self._dbusservicebatt.add_path('/ProductId', 0xFFFF)
+    self._dbusservicebatt.add_path('/ProductName', 'Tesla')
+    self._dbusservicebatt.add_path('/CustomName', 'Tesla Model 3')
+    self._dbusservicebatt.add_path('/Connected', 1)
+    self._dbusservicebatt.add_path('/FirmwareVersion', self._getTeslaAPIVersion())
+    self._dbusservicebatt.add_path('/HardwareVersion', 0)
+    self._dbusservicebatt.add_path('/Serial', self._getTeslaAPISerial())
+    # AllowedRoles WITHOUT 'system' — keep dbus-systemcalc from electing this as the system battery.
+    self._dbusservicebatt.add_path('/AllowedRoles', ['default'])
+    self._dbusservicebatt.add_path('/Soc', 0, gettextcallback=_pct)
+    self._dbusservicebatt.add_path('/Dc/0/Voltage', 0, gettextcallback=_v)
+    self._dbusservicebatt.add_path('/Dc/0/Current', 0, gettextcallback=_a)
+    self._dbusservicebatt.add_path('/Dc/0/Power', 0, gettextcallback=_w)
 
     # add _update function 'timer'
     gobject.timeout_add(500, self._update) # pause 250ms before the next request
@@ -122,6 +171,22 @@ class DbusTeslaAPIService:
       for path, settings in paths.items():
         dbusservice.add_path(
           path, settings['initial'], gettextcallback=settings['textformat'], writeable=True, onchangecallback=self._handlechangedvalue)
+
+  def _restore_cached_connection_status(self):
+    cfg = self._getConfig()
+    cached = self.read_data(cfg['DEFAULT']['VehicleId'])
+    charge = (cached or {}).get('response', {}).get('charge_state', {})
+    state = charge.get('charging_state')
+    latch = charge.get('charge_port_latch')
+    if state == 'Charging':
+      self._dbusserviceev['/Status'] = 2
+    elif state == 'Disconnected':
+      self._dbusserviceev['/Status'] = 0
+    elif state in ('Stopped', 'Complete') and latch in ('Engaged', 'Disengaged'):
+      if latch != 'Engaged':
+        self._dbusserviceev['/Status'] = 0
+      else:
+        self._dbusserviceev['/Status'] = 3 if state == 'Complete' else 1
 
   def _getConfig(self):
     config = configparser.ConfigParser()
@@ -173,26 +238,40 @@ class DbusTeslaAPIService:
       return str(version)
 
   def _getTeslaAPIStatusUrl(self):
-    config = self._getConfig()
-    URL = "https://owner-api.teslamotors.com/api/1/vehicles/%s/vehicle_data" % (config['DEFAULT']['VehicleId'])
+    # Fleet API (NA region). The legacy owner-api.teslamotors.com endpoint was
+    # decommissioned by Tesla and now returns 403. vehicle_data is a data read,
+    # so it works directly against Fleet API without the signed-command proxy.
+    # vehicle_tag is the VIN (Fleet API accepts VIN or id).
+    URL = "https://fleet-api.prd.na.vn.cloud.tesla.com/api/1/vehicles/%s/vehicle_data" % (config['VIN'])
     return URL
 
   def _getTeslaAPIData(self):
-    config = self._getConfig()
-    car_id = config['DEFAULT']['VehicleId']
+    cfg = self._getConfig()
+    car_id = cfg['DEFAULT']['VehicleId']
     URL = self._getTeslaAPIStatusUrl()
 
-    if not self._token:
-       self._token = self._getAccessToken()
+    # Use the Fleet API token managed by get_new_token()/get_token_is_expired()
+    # (stored in token.txt) — the same one the command path uses. The legacy
+    # owner-api token from _getAccessToken() no longer works.
+    if self.get_token_is_expired():
+       self.get_new_token()
 
-    if not self._token:
-        raise ValueError("Could not retrieve Tesla Token")
+    with open(token_file_path, 'r') as token_file:
+       token = token_file.read().strip()
 
-    token = self._token
+    if not token:
+        raise ValueError("Could not retrieve Tesla Fleet token")
+
+    self._token = token
 
     headers = {
         'Authorization': f'Bearer {token}'
     }
+
+    # Fleet API requires an explicit endpoints list; without it the response omits
+    # the state blocks this service reads (charge_state / vehicle_state / drive_state).
+    # location_data adds drive_state latitude/longitude for the Node-RED away check.
+    params = {'endpoints': 'charge_state;vehicle_state;drive_state;location_data'}
 
     checkDiff = datetime.now() - self._lastCheckData
     checkSecs = checkDiff.total_seconds()
@@ -201,7 +280,7 @@ class DbusTeslaAPIService:
        self._lastCheckData = datetime.now()
        logging.info(f"Last Get Tesla Data: {self._lastCheckData} - Wait in Seconds: {self._wait_seconds}")
 
-       response = requests.get(url = URL, headers=headers)
+       response = requests.get(url = URL, headers=headers, params=params, timeout=(10, 30))
        response.raise_for_status()
 
        # check for response
@@ -234,7 +313,7 @@ class DbusTeslaAPIService:
     }
 
     json_data = json.dumps(body)
-    response = requests.post(url = URL, data=json_data, headers={'Content-Type': 'application/json'})
+    response = requests.post(url = URL, data=json_data, headers={'Content-Type': 'application/json'}, timeout=(10, 30))
 
     # check for response
     if not response:
@@ -246,11 +325,17 @@ class DbusTeslaAPIService:
     if not response:
         raise ValueError("Converting response to JSON failed")
 
+    # Tesla returns an error payload (e.g. {"error": "login_required", ...}) with a 4xx
+    # instead of an access_token. Guard against the missing key so we raise a clear,
+    # catchable error rather than a KeyError that escapes _update() and kills the timer.
+    if "access_token" not in response:
+        raise ValueError("Tesla token request failed: %s" % (response))
+
     accessToken = response["access_token"]
-    refreshToken = response["refresh_token"]
-    expiresIn = response["expires_in"]
-    tokenType = response["token_type"]
-    
+    refreshToken = response.get("refresh_token")
+    expiresIn = response.get("expires_in")
+    tokenType = response.get("token_type")
+
     return accessToken
 
   def _signOfLife(self):
@@ -345,14 +430,16 @@ class DbusTeslaAPIService:
           self._firstRun = True
 
        if inverterPower > 500:
-          self._wait_seconds = 30
+          self._wait_seconds = self._poll_charging
 
+       # Track inverter power for display, but do NOT force a fresh Tesla poll on every
+       # swing — that is what burned through the Fleet API quota. The regular interval
+       # below governs how often vehicle_data is fetched.
        if abs(self._cacheInverterPower - inverterPower) >= 1.0:
           self._showInfoMessage(f"Inverter Power Level Changed: {inverterPower}")
-          self._wait_seconds = 30
-          if abs(self._cacheInverterPower - inverterPower) >= 400.0:
-             self._lastCheckData = datetime(2023, 12, 8)
           self._cacheInverterPower = inverterPower
+
+       self._maybeWakeAfterArrivingHome()
 
        #get data from TeslaAPI Plug
        self._carData = self._getTeslaAPIData()
@@ -364,6 +451,19 @@ class DbusTeslaAPIService:
              raise ValueError("NoPower")
 
           self._showInfoMessage('Car Awake')
+
+          # SoC always updates regardless of charge state / current gating below.
+          # Published on the parallel battery service so it appears in the VRM Battery block.
+          battery_level = self._carData['response']['charge_state'].get('battery_level')
+          if battery_level is not None:
+             self._dbusservicebatt['/Soc'] = battery_level
+             # charger_power is in kW on the AC side; treat it as DC charge power into the pack.
+             charger_power_kw = self._carData['response']['charge_state'].get('charger_power') or 0
+             charger_voltage = self._carData['response']['charge_state'].get('charger_voltage') or 0
+             charger_amps = self._carData['response']['charge_state'].get('charger_actual_current') or 0
+             self._dbusservicebatt['/Dc/0/Power'] = float(charger_power_kw) * 1000.0
+             self._dbusservicebatt['/Dc/0/Voltage'] = float(charger_voltage)
+             self._dbusservicebatt['/Dc/0/Current'] = float(charger_amps)
 
           #send data to DBus
           for phase in ['L1']:
@@ -379,17 +479,26 @@ class DbusTeslaAPIService:
               max_current = self._carData['response']['charge_state']['charge_current_request_max']
               battery_state = self._carData['response']['charge_state']['battery_level']
 
-              if max_current <= 12:
+              if charge_state == 'Disconnected':
+                # Unplugged. Checked before the max_current gate: after charging away from
+                # home the car reports e.g. 48 A, and skipping this left the old status
+                # (Charging) in place, so auto-start never saw the next plug-in at home.
+                self._dbusserviceev['/Status'] = 0
+                self._dbusserviceev['/ChargingTime'] = 0
+                self._dbusserviceev['/Position'] = 0
+                self._wait_seconds = self._poll_idle
+              elif max_current <= 12:
                 if int(charge_energy_added) == 0:
                   self._startDate = datetime.now()
                   self.resetSavedChargeStart()
                 
-                #self._dbusserviceev['/Ac/Energy/Forward'] = charge_energy_added
+                self._dbusserviceev['/Ac/Energy/Forward'] = float(charge_energy_added)
                 self._dbusserviceev['/MaxCurrent'] = max_current
 
                 if charge_state == 'Stopped' or charging_state == 'Complete':
                     if charge_port_latch == 'Engaged':
-                      self._dbusserviceev['/Status'] = 1
+                      # 3 = Charged: at its limit. Auto-start only acts on this if the limit is below 80%.
+                      self._dbusserviceev['/Status'] = 3 if charge_state == 'Complete' else 1
                     else:
                       self._dbusserviceev['/Status'] = 0
                       self._dbusserviceev['/ChargingTime'] = 0
@@ -402,7 +511,7 @@ class DbusTeslaAPIService:
                     self._dbusserviceev['/Ac/Power'] = power
                     self._dbusserviceev[pre + '/Power'] = power
                     # self._dbusserviceev["/Mode"] = str(battery_state) + '%'
-                    self._wait_seconds = 30
+                    self._wait_seconds = self._poll_charging
                     self._running = True
 
                     if (current > 12):
@@ -427,7 +536,17 @@ class DbusTeslaAPIService:
           carDriving = self._getCarDriving()
           if carDriving:
              self._showInfoMessage('Car Driving')
-             self._wait_seconds = 60 * 60
+             # Was 60 min, which missed plug-ins made soon after parking.
+             self._wait_seconds = self._poll_idle
+             self._sawDriving = True
+             self._homeWakeDueAt = None
+          elif self._sawDriving:
+             # First awake reading after a drive: the car has parked.
+             self._sawDriving = False
+             if self._dbusserviceev['/Status'] == 0 and self._isCarAtHome():
+                self._homeWakeDueAt = time.time() + self._home_wake_delay
+                logging.info('Parked at home unplugged; will wake the car in %d min to check for a plug-in',
+                             self._home_wake_delay // 60)
              
        #else:
          #if charging:
@@ -435,8 +554,9 @@ class DbusTeslaAPIService:
            #self._dbusserviceev['/ChargingTime'] = delta.total_seconds()
     except Exception as e:
       error_message = str(e)
-      if self._request_timeout_string in error_message:
-        self._dbusserviceev['/Status'] = 0
+      if self._request_timeout_string in error_message or isinstance(e, requests.exceptions.Timeout):
+        # A sleeping/unreachable car provides no new evidence about its plug.
+        # Keep the last observed status; a fresh response will update it normally.
         # self._dbusserviceev['/Mode'] = "Car Sleeping"
         self._wait_seconds = 60 * 5
         self._showInfoMessage('Car Sleeping')
@@ -453,9 +573,17 @@ class DbusTeslaAPIService:
       else:
         self._wait_seconds = 60 * 5
         self._dbusserviceev['/Status'] = 10
-        self._token = self._getAccessToken()
         # self._dbusserviceev['/Mode'] = "Check Logs for Error"
         logging.critical('Error at %s', '_update', exc_info=e)
+        # Force a fresh Fleet token on the next cycle, but NEVER let a token-refresh
+        # failure escape _update(): an unhandled exception in this callback makes GLib
+        # remove the timeout source, permanently freezing the service (no further
+        # _update() calls).
+        self._token = None
+        try:
+          self.get_new_token()
+        except Exception as token_error:
+          logging.critical('Token refresh failed during _update recovery', exc_info=token_error)
       
     self._lastUpdate = time.time()
     self._signalChanges()
@@ -485,6 +613,44 @@ class DbusTeslaAPIService:
         return False
     except Exception as e:
        return False
+
+  def _isCarAtHome(self):
+    try:
+      with open(home_location_file_path, 'r') as file:
+        home = json.load(file)
+      drive = self._carData['response']['drive_state']
+      lat, lon = float(drive['latitude']), float(drive['longitude'])
+      home_lat, home_lon = float(home['latitude']), float(home['longitude'])
+    except (OSError, ValueError, KeyError, TypeError) as e:
+      logging.warning('Home check skipped, no home wake: %s', e)
+      return False
+    # Haversine distance in metres.
+    p1, p2 = math.radians(lat), math.radians(home_lat)
+    a = (math.sin((p2 - p1) / 2) ** 2 +
+         math.cos(p1) * math.cos(p2) * math.sin(math.radians(home_lon - lon) / 2) ** 2)
+    distance = 2 * 6371000 * math.asin(math.sqrt(a))
+    return distance <= float(home.get('radius_m', 200))
+
+  def _maybeWakeAfterArrivingHome(self):
+    if self._homeWakeDueAt is None or time.time() < self._homeWakeDueAt:
+      return
+    self._homeWakeDueAt = None
+    if self._dbusserviceev['/Status'] != 0:
+      return  # a plug-in was already seen
+    logging.info('Waking car after arriving home to check for a plug-in')
+    try:
+      if self.get_token_is_expired():
+        self.get_new_token()
+      subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE, timeout=30)
+    except Exception as e:
+      # Logged, not raised: an error escaping _update() would set Status 10 and block
+      # auto-start. tesla-control can report "asleep" even when the wake was sent,
+      # so the quick re-read below still runs.
+      detail = getattr(e, 'stderr', None)
+      logging.error('Home wake failed: %s %s', e, detail.decode('utf-8', 'replace') if detail else '')
+    # Read the car again in about a minute instead of the normal interval.
+    self._lastCheckData = datetime.now()
+    self._wait_seconds = 60
 
   def _handlechangedvalue(self, path, value):
     logging.info("someone else updated %s to %s" % (path, value))
