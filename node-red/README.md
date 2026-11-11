@@ -20,6 +20,19 @@ The older **Car Charging** tab (`2ea0df98a5ef77d5`) is still on the Pi but disab
 The start command runs `python /data/tesla/node-red-tesla.py start`, which needs that helper and
 `change-tesla-charging-rate.py` in `/data/tesla/`.
 
+## Hourly wake
+
+`hourly-wake.json` is the **Tesla Hourly Wake** tab (`tesla_wake_tab`). Between 8 AM and 5 PM Central,
+it wakes the car at most once an hour. It wakes only when all of these are true:
+
+- The battery/solar start rules pass. They use the same constants as the start rules, and a test checks that.
+- The car is home.
+- The charger status is 0 or 2.
+- The inverter, which powers only the car, is under 300 W.
+
+It runs `python /data/tesla/node-red-tesla.py wake`. Failures are appended to
+`/data/tesla/auto-start-errors.log`. Test: `node tests/test_node_red_wake.cjs`.
+
 ## Deploying a change
 
 Back up `flows.json` first. Deploy through the Node-RED admin API (`POST http://127.0.0.1:1880/flows`

@@ -79,3 +79,45 @@ class StartTests(unittest.TestCase):
                 raised = call(['charging-set-limit', '80']) in controller.execute.call_args_list
                 self.assertEqual(raised, expected)
                 self.assertEqual(controller.execute.call_args_list[-1], call(['charging-start']))
+
+
+class WakeOperationTests(unittest.TestCase):
+    """`node-red-tesla.py wake`, used by the hourly wake flow."""
+
+    def run_main(self, controller):
+        import contextlib, io, sys, tempfile, types
+        from unittest.mock import patch
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        rate = types.SimpleNamespace(ChargingController=Mock(return_value=controller))
+        out, err = io.StringIO(), io.StringIO()
+        fake_fcntl = types.SimpleNamespace(LOCK_EX=2, LOCK_NB=4, flock=Mock())
+        with patch.dict(sys.modules, {'fcntl': fake_fcntl}), \
+             patch.object(module, 'DATA_DIR', Path(folder.name)), \
+             patch.object(module.importlib.util, 'spec_from_file_location', Mock()), \
+             patch.object(module.importlib.util, 'module_from_spec', Mock(return_value=rate)), \
+             contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = module.main(['wake'])
+        fake_fcntl.flock.assert_called_once()  # same lock as start and manual amp changes
+        return code, out.getvalue(), err.getvalue()
+
+    def test_wake_only_wakes(self):
+        controller = Mock()
+        code, out, _ = self.run_main(controller)
+        self.assertEqual(code, 0)
+        self.assertIn('Wake sent', out)
+        self.assertEqual(controller.mock_calls, [call.execute(['wake'])])
+
+    def test_asleep_reply_still_counts_as_sent(self):
+        controller = Mock()
+        controller.execute.side_effect = ASLEEP
+        code, out, _ = self.run_main(controller)
+        self.assertEqual(code, 0)
+        self.assertIn('Wake sent', out)
+
+    def test_other_error_fails_with_message(self):
+        controller = Mock()
+        controller.execute.side_effect = RuntimeError('token expired')
+        code, _, err = self.run_main(controller)
+        self.assertEqual(code, 1)
+        self.assertIn('Node-RED Tesla wake failed: token expired', err)

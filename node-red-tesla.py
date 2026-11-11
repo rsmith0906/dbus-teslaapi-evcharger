@@ -80,7 +80,7 @@ def start(controller, charge_limit=None, sleep=time.sleep, clock=time.monotonic)
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=['read', 'start'])
+    parser.add_argument('operation', choices=['read', 'start', 'wake'])
     args = parser.parse_args(argv)
     try:
         if args.operation == 'read':
@@ -93,7 +93,14 @@ def main(argv=None):
         spec.loader.exec_module(rate)
         with (DATA_DIR / '.charging-rate.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            start(rate.ChargingController(DATA_DIR), charge_limit=read_charge_limit())
+            controller = rate.ChargingController(DATA_DIR)
+            if args.operation == 'wake':
+                # Hourly wake flow: only wakes, so the driver's next poll sees the
+                # car's real plug state. The auto-start flow does the starting.
+                wake(controller)
+                print('Wake sent', flush=True)
+                return 0
+            start(controller, charge_limit=read_charge_limit())
         print('Auto-start command succeeded at 5 A', flush=True)
         return 0
     except Exception as error:
