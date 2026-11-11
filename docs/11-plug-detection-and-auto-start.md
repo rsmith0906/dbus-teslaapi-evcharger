@@ -30,6 +30,13 @@ If the start command fails, **Rearm/pause after failed start** (`5e1a7c0d2b9f4a0
 
 **Full car (since 2026-11-05):** the driver reports `Complete` with the latch engaged as status 3 (Charged), not 1 (Connected). The rules make no Tesla calls at status 3 unless the limit is below 80%.
 
+**Unplug and come home (driver, since 2026-11-11):** on 2026-11-11 the car came home and was plugged in, but nothing started. The last reading, taken while driving, said `Disconnected` with `charge_current_request_max` 48 A. The driver only updated `/Status` when that value was 12 A or less, so the morning's `2` Charging stuck, and the flow did nothing. The car then slept, so the plug-in was never seen. Three driver changes:
+- `Disconnected` now always sets status `0`, whatever the max current. Before, it set `0` only for a high current, and `10` for 12 A or less, so the flow never cleared its pause on unplug.
+- While driving, the driver polls every 5 min. It was 60 min, which missed plug-ins made soon after parking. A 1-hour drive now costs about 11 more data requests, roughly 2 cents.
+- After the first parked reading following a drive, if the car is unplugged and within `radius_m` of `/data/tesla/home-location.json`, the driver sends **one** `tesla-control wake` 15 min later. It skips the wake if a plug-in was already seen or the car drove off. It re-reads the car about 60 s later. A wake costs about 2 cents. Wake errors are logged as "Home wake failed" and do not change the status.
+
+Not covered: a plug-in made after that one wake, once the car has fallen asleep again, is still missed until something wakes the car. The Bluetooth plan below is the full fix. Tests: `tests/test_driver_sleep.py` `UnplugAndHomeWakeTests`. Backup on the Pi: `dbus-teslaapi-evcharger.py.pre-homewake-20261111-215230`.
+
 The saved file looks like `{"attempted_at": <unix time>, "retry_after": <unix time>, "reason": "Started recently" | "Car said unplugged" | "Car did not wake" | "Car timed out" | "Car is full" | "Start failed"}`. The rule node's status text shows the reason and the next try time.
 
 Each failed start also adds a line with the time, reason and error text to `/data/tesla/auto-start-errors.log`, so the cause can be read later. The file is created on the first failure and is not rotated. Backup from this change: `flows.json.pre-timeout-retry-*`.

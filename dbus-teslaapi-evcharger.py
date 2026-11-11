@@ -12,6 +12,7 @@ else:
     from gi.repository import GLib as gobject
 import sys
 import time
+import math
 import json
 import subprocess
 import requests # for http GET
@@ -28,6 +29,8 @@ with open(config_file_path, 'r') as config_file:
 authtoken_file_path = os.path.join(script_dir, 'authtoken.txt')
 token_file_path = os.path.join(script_dir, 'token.txt')
 token_expire_file_path = os.path.join(script_dir, 'tokenexpire.txt')
+# {"latitude": .., "longitude": .., "radius_m": ..}; Pi only, shared with the Node-RED alert.
+home_location_file_path = os.path.join(script_dir, 'home-location.json')
 
 # Setting environment variables
 os.environ['PATH'] += ':/usr/local/bin:/usr/bin:/bin:/data/usr/local/go/bin'
@@ -87,6 +90,11 @@ class DbusTeslaAPIService:
     self._lastUpdate = 0
     self._cacheInverterPower = Decimal(0.0)
     self._cacheChargingPower = -1
+    # One paid wake (~2 cents) after the car parks at home unplugged, so a plug-in made
+    # after it falls asleep is still seen. A sleeping car cannot report a plug-in.
+    self._home_wake_delay = 15 * 60
+    self._sawDriving = False
+    self._homeWakeDueAt = None
 
     self.add_standard_paths(self._dbusserviceev, productname, customname, connection, deviceinstance, config, {
           '/Mode': {'initial': 0, 'textformat': _mode},
@@ -431,6 +439,8 @@ class DbusTeslaAPIService:
           self._showInfoMessage(f"Inverter Power Level Changed: {inverterPower}")
           self._cacheInverterPower = inverterPower
 
+       self._maybeWakeAfterArrivingHome()
+
        #get data from TeslaAPI Plug
        self._carData = self._getTeslaAPIData()
        if self._carData:
@@ -469,7 +479,15 @@ class DbusTeslaAPIService:
               max_current = self._carData['response']['charge_state']['charge_current_request_max']
               battery_state = self._carData['response']['charge_state']['battery_level']
 
-              if max_current <= 12:
+              if charge_state == 'Disconnected':
+                # Unplugged. Checked before the max_current gate: after charging away from
+                # home the car reports e.g. 48 A, and skipping this left the old status
+                # (Charging) in place, so auto-start never saw the next plug-in at home.
+                self._dbusserviceev['/Status'] = 0
+                self._dbusserviceev['/ChargingTime'] = 0
+                self._dbusserviceev['/Position'] = 0
+                self._wait_seconds = self._poll_idle
+              elif max_current <= 12:
                 if int(charge_energy_added) == 0:
                   self._startDate = datetime.now()
                   self.resetSavedChargeStart()
@@ -518,7 +536,17 @@ class DbusTeslaAPIService:
           carDriving = self._getCarDriving()
           if carDriving:
              self._showInfoMessage('Car Driving')
-             self._wait_seconds = 60 * 60
+             # Was 60 min, which missed plug-ins made soon after parking.
+             self._wait_seconds = self._poll_idle
+             self._sawDriving = True
+             self._homeWakeDueAt = None
+          elif self._sawDriving:
+             # First awake reading after a drive: the car has parked.
+             self._sawDriving = False
+             if self._dbusserviceev['/Status'] == 0 and self._isCarAtHome():
+                self._homeWakeDueAt = time.time() + self._home_wake_delay
+                logging.info('Parked at home unplugged; will wake the car in %d min to check for a plug-in',
+                             self._home_wake_delay // 60)
              
        #else:
          #if charging:
@@ -585,6 +613,44 @@ class DbusTeslaAPIService:
         return False
     except Exception as e:
        return False
+
+  def _isCarAtHome(self):
+    try:
+      with open(home_location_file_path, 'r') as file:
+        home = json.load(file)
+      drive = self._carData['response']['drive_state']
+      lat, lon = float(drive['latitude']), float(drive['longitude'])
+      home_lat, home_lon = float(home['latitude']), float(home['longitude'])
+    except (OSError, ValueError, KeyError, TypeError) as e:
+      logging.warning('Home check skipped, no home wake: %s', e)
+      return False
+    # Haversine distance in metres.
+    p1, p2 = math.radians(lat), math.radians(home_lat)
+    a = (math.sin((p2 - p1) / 2) ** 2 +
+         math.cos(p1) * math.cos(p2) * math.sin(math.radians(home_lon - lon) / 2) ** 2)
+    distance = 2 * 6371000 * math.asin(math.sqrt(a))
+    return distance <= float(home.get('radius_m', 200))
+
+  def _maybeWakeAfterArrivingHome(self):
+    if self._homeWakeDueAt is None or time.time() < self._homeWakeDueAt:
+      return
+    self._homeWakeDueAt = None
+    if self._dbusserviceev['/Status'] != 0:
+      return  # a plug-in was already seen
+    logging.info('Waking car after arriving home to check for a plug-in')
+    try:
+      if self.get_token_is_expired():
+        self.get_new_token()
+      subprocess.run(['tesla-control', 'wake'], check=True, stderr=subprocess.PIPE, timeout=30)
+    except Exception as e:
+      # Logged, not raised: an error escaping _update() would set Status 10 and block
+      # auto-start. tesla-control can report "asleep" even when the wake was sent,
+      # so the quick re-read below still runs.
+      detail = getattr(e, 'stderr', None)
+      logging.error('Home wake failed: %s %s', e, detail.decode('utf-8', 'replace') if detail else '')
+    # Read the car again in about a minute instead of the normal interval.
+    self._lastCheckData = datetime.now()
+    self._wait_seconds = 60
 
   def _handlechangedvalue(self, path, value):
     logging.info("someone else updated %s to %s" % (path, value))
