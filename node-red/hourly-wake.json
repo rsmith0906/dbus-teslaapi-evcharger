@@ -1,0 +1,372 @@
+[
+  {
+    "id": "tesla_wake_tab",
+    "type": "tab",
+    "label": "Tesla Hourly Wake",
+    "disabled": false,
+    "env": [],
+    "info": "Wakes the car at most once an hour, 8 AM-5 PM Central, when battery/solar would allow a start, the car is home, the charger status is 0 or 2, and the inverter (car only) is under 300 W. The driver then reads the real plug state and the Tesla Auto-Start Charging tab starts charging. See docs/11-plug-detection-and-auto-start.md. Runs /data/tesla/node-red-tesla.py wake."
+  },
+  {
+    "id": "wake_ev_status",
+    "type": "victron-input-evcharger",
+    "z": "tesla_wake_tab",
+    "service": "com.victronenergy.evcharger/41",
+    "path": "/Status",
+    "serviceObj": {
+      "service": "com.victronenergy.evcharger/41",
+      "name": "TESLACHARGER"
+    },
+    "pathObj": {
+      "path": "/Status",
+      "type": "enum",
+      "name": "Status",
+      "enum": {
+        "0": "Disconnected",
+        "1": "Connected",
+        "2": "Charging",
+        "3": "Charged",
+        "4": "Waiting for sun",
+        "5": "Waiting for RFID",
+        "6": "Waiting for start",
+        "7": "Low SOC",
+        "8": "Ground fault",
+        "9": "Welded contacts",
+        "10": "CP Input shorted",
+        "11": "Residual current detected",
+        "12": "Under voltage detected",
+        "13": "Overvoltage detected",
+        "14": "Overheating detected"
+      }
+    },
+    "initial": "",
+    "name": "EVChargerStatus",
+    "onlyChanges": false,
+    "outputs": 1,
+    "x": 150,
+    "y": 60,
+    "wires": [
+      [
+        "wake_remember"
+      ]
+    ]
+  },
+  {
+    "id": "wake_pv_power",
+    "type": "victron-input-system",
+    "z": "tesla_wake_tab",
+    "service": "com.victronenergy.system/0",
+    "path": "/Dc/Pv/Power",
+    "serviceObj": {
+      "service": "com.victronenergy.system/0",
+      "name": "Venus system"
+    },
+    "pathObj": {
+      "path": "/Dc/Pv/Power",
+      "type": "float",
+      "name": "MPPTs - power (W)"
+    },
+    "name": "PVPower",
+    "onlyChanges": false,
+    "roundValues": "0",
+    "outputs": 1,
+    "x": 150,
+    "y": 100,
+    "wires": [
+      [
+        "wake_remember"
+      ]
+    ]
+  },
+  {
+    "id": "wake_battery_soc",
+    "type": "victron-input-battery",
+    "z": "tesla_wake_tab",
+    "service": "com.victronenergy.battery/289",
+    "path": "/Soc",
+    "serviceObj": {
+      "service": "com.victronenergy.battery/289",
+      "name": "SmartShunt 500A/50mV"
+    },
+    "pathObj": {
+      "path": "/Soc",
+      "type": "float",
+      "name": "State of charge (%)"
+    },
+    "initial": "",
+    "name": "BatterySOC",
+    "onlyChanges": false,
+    "roundValues": "0",
+    "outputs": 1,
+    "x": 150,
+    "y": 140,
+    "wires": [
+      [
+        "wake_remember"
+      ]
+    ]
+  },
+  {
+    "id": "wake_inverter_power",
+    "type": "victron-input-inverter",
+    "z": "tesla_wake_tab",
+    "service": "com.victronenergy.inverter/41",
+    "path": "/Ac/Out/L1/P",
+    "serviceObj": {
+      "service": "com.victronenergy.inverter/41",
+      "name": "GIANDEL 24v 2000w"
+    },
+    "pathObj": {
+      "path": "/Ac/Out/L1/P",
+      "type": "float",
+      "name": "Output power (W AC)"
+    },
+    "name": "InverterPower",
+    "onlyChanges": false,
+    "roundValues": "0",
+    "outputs": 1,
+    "x": 150,
+    "y": 180,
+    "wires": [
+      [
+        "wake_remember"
+      ]
+    ]
+  },
+  {
+    "id": "wake_remember",
+    "type": "function",
+    "z": "tesla_wake_tab",
+    "name": "Remember latest reading",
+    "func": "flow.set(msg.topic, msg.payload);\nreturn null;\n",
+    "x": 420,
+    "y": 120,
+    "wires": [
+      []
+    ],
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": []
+  },
+  {
+    "id": "wake_tick",
+    "type": "inject",
+    "z": "tesla_wake_tab",
+    "name": "Every 5 minutes",
+    "props": [],
+    "repeat": "300",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "90",
+    "topic": "",
+    "x": 140,
+    "y": 260,
+    "wires": [
+      [
+        "wake_read_cache"
+      ]
+    ]
+  },
+  {
+    "id": "wake_read_cache",
+    "type": "file in",
+    "z": "tesla_wake_tab",
+    "name": "Read Tesla cache (no API)",
+    "filename": "/tmp/1492677889280637.json",
+    "filenameType": "str",
+    "format": "utf8",
+    "chunk": false,
+    "sendError": false,
+    "encoding": "utf8",
+    "allProps": false,
+    "x": 360,
+    "y": 260,
+    "wires": [
+      [
+        "wake_keep_cache"
+      ]
+    ]
+  },
+  {
+    "id": "wake_keep_cache",
+    "type": "function",
+    "z": "tesla_wake_tab",
+    "name": "Keep cache text",
+    "func": "msg.cache = msg.payload;\nreturn msg;\n",
+    "x": 570,
+    "y": 260,
+    "wires": [
+      [
+        "wake_read_home"
+      ]
+    ],
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": []
+  },
+  {
+    "id": "wake_read_home",
+    "type": "file in",
+    "z": "tesla_wake_tab",
+    "name": "Read home location",
+    "filename": "/data/tesla/home-location.json",
+    "filenameType": "str",
+    "format": "utf8",
+    "chunk": false,
+    "sendError": false,
+    "encoding": "utf8",
+    "allProps": false,
+    "x": 780,
+    "y": 260,
+    "wires": [
+      [
+        "wake_rules"
+      ]
+    ]
+  },
+  {
+    "id": "wake_rules",
+    "type": "function",
+    "z": "tesla_wake_tab",
+    "name": "Should we wake the car?",
+    "func": "// Wake the car at most once an hour, in daytime, when the house could pay for a\n// charge but the inverter (which powers only the car) shows no charging. A sleeping\n// car cannot report a plug-in, so the charger status goes stale. After a wake the\n// driver's next poll (5 min or less) reads the real plug state, and the\n// \"Tesla Auto-Start Charging\" tab starts charging if the car is plugged in.\n// Battery/solar thresholds must match that tab's start rules (checked by tests).\nconst BATTERY_ONLY_SOC = 50;   // strictly above\nconst SOLAR_MIN_SOC = 20;      // at least\nconst SOLAR_WATTS = 700;       // strictly above\nconst CHARGING_WATTS = 300;    // inverter at or above this = car is charging (~600 W at 5 A)\nconst REPEAT_MINUTES = 60;\nconst FIRST_HOUR = 8;          // Central time; wakes from 8:00\nconst LAST_HOUR = 17;          // up to 16:59\nconst TIME_ZONE = 'America/Chicago';\n\nconst quiet = (text, fill = 'grey') => { node.status({fill, shape: 'ring', text}); return null; };\n\nif (msg.error) return quiet('File problem: ' + msg.error.message, 'red');\nlet car, home;\ntry {\n    car = JSON.parse(msg.cache).response.drive_state;\n    home = JSON.parse(msg.payload);\n} catch (e) {\n    return quiet('Bad JSON: ' + e.message, 'red');\n}\n\nconst now = Date.now();\nconst hour = Number(new Intl.DateTimeFormat('en-US', {timeZone: TIME_ZONE, hour: 'numeric', hourCycle: 'h23'}).format(now));\nif (hour < FIRST_HOUR || hour >= LAST_HOUR) return quiet('Outside 8 AM-5 PM Central');\n\nconst soc = flow.get('BatterySOC'), solar = flow.get('PVPower');\nconst status = flow.get('EVChargerStatus'), inverter = flow.get('InverterPower');\nif (![soc, solar, inverter].every(Number.isFinite) || !Number.isInteger(status)) return quiet('Waiting for Victron readings');\nif (inverter >= CHARGING_WATTS) return quiet(`Car charging (${Math.round(inverter)} W)`);\nif (!(soc > BATTERY_ONLY_SOC || (soc >= SOLAR_MIN_SOC && solar > SOLAR_WATTS)))\n    return quiet(`Not enough battery or solar (${Math.round(soc)}%, ${Math.round(solar)} W)`);\n// 1 Connected: the auto-start tab's start command wakes the car itself. 3 Charged: full.\nif (status !== 0 && status !== 2) return quiet(`Charger status ${status}; auto-start handles it`);\n\nif (!car || !Number.isFinite(car.latitude) || !Number.isFinite(car.longitude))\n    return quiet('No car location in Tesla cache', 'red');\nif (!home || !Number.isFinite(home.latitude) || !Number.isFinite(home.longitude) || !Number.isFinite(home.radius_m))\n    return quiet('Bad /data/tesla/home-location.json', 'red');\nconst rad = d => d * Math.PI / 180;\nconst a = Math.sin(rad(car.latitude - home.latitude) / 2) ** 2 +\n    Math.cos(rad(home.latitude)) * Math.cos(rad(car.latitude)) * Math.sin(rad(car.longitude - home.longitude) / 2) ** 2;\nconst meters = 2 * 6371000 * Math.asin(Math.sqrt(a));\nif (meters > home.radius_m) return quiet(`Car away (${(meters / 1000).toFixed(1)} km)`);\n\nconst last = context.get('lastWakeAt');\nif (last && now - last < REPEAT_MINUTES * 60 * 1000) return quiet(`Waiting ${REPEAT_MINUTES} min since last wake`);\n\ncontext.set('lastWakeAt', now);\nnode.status({fill: 'yellow', shape: 'dot', text: `Wake sent (status ${status}, ${Math.round(inverter)} W)`});\nmsg.payload = '';\nreturn msg;\n",
+    "x": 1000,
+    "y": 260,
+    "wires": [
+      [
+        "wake_exec"
+      ]
+    ],
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": []
+  },
+  {
+    "id": "wake_exec",
+    "type": "exec",
+    "z": "tesla_wake_tab",
+    "command": "python /data/tesla/node-red-tesla.py wake",
+    "addpay": "",
+    "append": "",
+    "useSpawn": "false",
+    "timer": "60",
+    "winHide": false,
+    "oldrc": false,
+    "name": "Wake the car",
+    "x": 1210,
+    "y": 260,
+    "wires": [
+      [
+        "wake_debug"
+      ],
+      [
+        "wake_debug",
+        "wake_log_line"
+      ],
+      [
+        "wake_debug"
+      ]
+    ]
+  },
+  {
+    "id": "wake_log_line",
+    "type": "function",
+    "z": "tesla_wake_tab",
+    "name": "Format wake error",
+    "func": "// stderr from the wake command: append one line to the shared auto-start error log.\nconst err = String(msg.payload || '').trim();\nif (!err) return null;\nreturn {payload: new Date().toISOString() + ' Hourly wake failed: ' + err.replace(/\\s+/g, ' ').slice(0, 1000)};\n",
+    "x": 1420,
+    "y": 320,
+    "wires": [
+      [
+        "wake_log"
+      ]
+    ],
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": []
+  },
+  {
+    "id": "wake_log",
+    "type": "file",
+    "z": "tesla_wake_tab",
+    "name": "Log wake error",
+    "filename": "/data/tesla/auto-start-errors.log",
+    "filenameType": "str",
+    "appendNewline": true,
+    "createDir": false,
+    "overwriteFile": "false",
+    "encoding": "utf8",
+    "x": 1630,
+    "y": 320,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "wake_debug",
+    "type": "debug",
+    "z": "tesla_wake_tab",
+    "name": "Wake",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "true",
+    "targetType": "full",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1410,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "wake_catch",
+    "type": "catch",
+    "z": "tesla_wake_tab",
+    "name": "File errors",
+    "scope": [
+      "wake_read_cache",
+      "wake_read_home"
+    ],
+    "uncaught": false,
+    "x": 360,
+    "y": 340,
+    "wires": [
+      [
+        "wake_file_error"
+      ]
+    ]
+  },
+  {
+    "id": "wake_file_error",
+    "type": "function",
+    "z": "tesla_wake_tab",
+    "name": "Pass file error to rules",
+    "func": "// File-in errors come here so the rules node shows a red status instead of going quiet.\nreturn msg;\n",
+    "x": 580,
+    "y": 340,
+    "wires": [
+      [
+        "wake_rules"
+      ]
+    ],
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": []
+  }
+]

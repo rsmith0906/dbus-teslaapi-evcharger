@@ -1,16 +1,16 @@
 [
   {
-    "id": "2ea0df98a5ef77d5",
+    "id": "262a0e697e4f1c1a",
     "type": "tab",
     "label": "Tesla Auto-Start Charging",
     "disabled": false,
-    "info": "Start policy is in the Start rules function. Five minute local checks. No additional Tesla polling. Disable the previous start flow before deploying this replacement. Requires /data/tesla/node-red-tesla.py.",
+    "info": "Start policy is in the Start rules function. Plug state comes from the Victron EV charger /Status (no Tesla cache). Starts as often as needed while plugged in, at most once per 30 min; a failed start pauses 30 min (car said unplugged) or 3 h (other errors). The start command wakes the car first. Requires /data/tesla/node-red-tesla.py.",
     "env": []
   },
   {
-    "id": "1fd0d878fd966bba",
+    "id": "137fdb9a5b5bdd3f",
     "type": "victron-input-battery",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "service": "com.victronenergy.battery/289",
     "path": "/Soc",
     "serviceObj": {
@@ -31,14 +31,14 @@
     "y": 140,
     "wires": [
       [
-        "68284bb37193261f"
+        "9352c01f072aa3f7"
       ]
     ]
   },
   {
-    "id": "9d7c07235a81fc37",
+    "id": "617d8eba94a816e1",
     "type": "victron-input-evcharger",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "service": "com.victronenergy.evcharger/41",
     "path": "/Status",
     "serviceObj": {
@@ -75,14 +75,14 @@
     "y": 220,
     "wires": [
       [
-        "68284bb37193261f"
+        "9352c01f072aa3f7"
       ]
     ]
   },
   {
-    "id": "68284bb37193261f",
+    "id": "9352c01f072aa3f7",
     "type": "join",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "name": "",
     "mode": "custom",
     "build": "object",
@@ -91,6 +91,7 @@
     "key": "topic",
     "joiner": "\\n",
     "joinerType": "str",
+    "useparts": true,
     "accumulate": true,
     "timeout": "",
     "count": "3",
@@ -103,14 +104,14 @@
     "y": 180,
     "wires": [
       [
-        "275b3ec218863a0d"
+        "c8c38d4dbac24c7b"
       ]
     ]
   },
   {
-    "id": "275b3ec218863a0d",
+    "id": "c8c38d4dbac24c7b",
     "type": "function",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "name": "Keep latest house readings",
     "func": "flow.set(\"teslaEnergy\", msg.payload);\nreturn msg;",
     "outputs": 1,
@@ -123,14 +124,14 @@
     "y": 180,
     "wires": [
       [
-        "9d6fc8a88f5efb9a"
+        "2d8c4d880ecf57a6"
       ]
     ]
   },
   {
-    "id": "b742223f1a4789de",
+    "id": "170d2b84ba503aac",
     "type": "debug",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "name": "Start Car",
     "active": true,
     "tosidebar": true,
@@ -140,14 +141,14 @@
     "targetType": "full",
     "statusVal": "",
     "statusType": "auto",
-    "x": 1470,
-    "y": 560,
+    "x": 1560,
+    "y": 600,
     "wires": []
   },
   {
-    "id": "4ea1974c78fc0266",
+    "id": "07fc9f3bb30234fa",
     "type": "exec",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "command": "python /data/tesla/node-red-tesla.py start",
     "addpay": "",
     "append": "",
@@ -155,25 +156,26 @@
     "timer": "180",
     "winHide": false,
     "oldrc": false,
-    "name": "Set 5 A, then start",
-    "x": 920,
-    "y": 500,
+    "name": "Wake, set 5 A, then start",
+    "x": 1490,
+    "y": 280,
     "wires": [
       [
-        "71a9d22f446d1f01"
+        "573db5790dd43935"
       ],
       [
-        "b742223f1a4789de"
+        "170d2b84ba503aac",
+        "5e1a7c0d2b9f4a01"
       ],
       [
-        "b742223f1a4789de"
+        "170d2b84ba503aac"
       ]
     ]
   },
   {
-    "id": "9d6fc8a88f5efb9a",
+    "id": "2d8c4d880ecf57a6",
     "type": "delay",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "name": "Check at most every 5 minutes",
     "pauseType": "rate",
     "timeout": "5",
@@ -191,27 +193,27 @@
     "y": 180,
     "wires": [
       [
-        "tesla_read_cache"
+        "9d11de585b5c8a02"
       ]
     ]
   },
   {
-    "id": "04a59ee014d846bd",
+    "id": "806cc1ca61fe731a",
     "type": "pushbullet",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "config": "7c3e0c966c39354b",
     "pushtype": "note",
     "title": "Tesla auto-start at 5 A",
     "chan": "",
     "name": "Auto-start command succeeded",
-    "x": 1480,
-    "y": 460,
+    "x": 1870,
+    "y": 100,
     "wires": []
   },
   {
-    "id": "acac5a27f2554494",
+    "id": "635a306d6fcde43e",
     "type": "victron-input-system",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "service": "com.victronenergy.system/0",
     "path": "/Dc/Pv/Power",
     "serviceObj": {
@@ -231,14 +233,14 @@
     "y": 300,
     "wires": [
       [
-        "68284bb37193261f"
+        "9352c01f072aa3f7"
       ]
     ]
   },
   {
-    "id": "71a9d22f446d1f01",
+    "id": "573db5790dd43935",
     "type": "function",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "name": "Notify only on successful start",
     "func": "if (String(msg.payload).trim() !== \"Auto-start command succeeded at 5 A\") return null; return msg;",
     "outputs": 1,
@@ -246,106 +248,101 @@
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 1180,
-    "y": 500,
+    "x": 1810,
+    "y": 240,
     "wires": [
       [
-        "04a59ee014d846bd",
-        "b742223f1a4789de"
+        "806cc1ca61fe731a",
+        "170d2b84ba503aac"
       ]
     ]
   },
   {
-    "id": "tesla_read_cache",
+    "id": "9d11de585b5c8a02",
     "type": "exec",
-    "z": "2ea0df98a5ef77d5",
-    "name": "Read local cache (no API)",
-    "x": 240,
-    "y": 400,
-    "wires": [
-      [
-        "tesla_parse_cache"
-      ],
-      [
-        "b742223f1a4789de"
-      ],
-      [
-        "b742223f1a4789de"
-      ]
-    ],
+    "z": "262a0e697e4f1c1a",
     "command": "python /data/tesla/node-red-tesla.py read",
     "addpay": "",
     "append": "",
     "useSpawn": "false",
     "timer": "20",
-    "oldrc": false
-  },
-  {
-    "id": "tesla_parse_cache",
-    "type": "json",
-    "z": "2ea0df98a5ef77d5",
-    "name": "Parse cached data",
-    "x": 480,
-    "y": 400,
+    "winHide": false,
+    "oldrc": false,
+    "name": "Read saved session (no API)",
+    "x": 170,
+    "y": 440,
     "wires": [
       [
-        "tesla_start_policy"
+        "afa3a2566ab34b88"
+      ],
+      [
+        "170d2b84ba503aac"
+      ],
+      [
+        "170d2b84ba503aac"
       ]
-    ],
+    ]
+  },
+  {
+    "id": "afa3a2566ab34b88",
+    "type": "json",
+    "z": "262a0e697e4f1c1a",
+    "name": "Parse saved session",
     "property": "payload",
     "action": "obj",
-    "pretty": false
-  },
-  {
-    "id": "tesla_start_policy",
-    "type": "function",
-    "z": "2ea0df98a5ef77d5",
-    "name": "Start rules: >50% OR >=20% + >1600 W",
-    "x": 790,
-    "y": 400,
+    "pretty": false,
+    "x": 450,
+    "y": 360,
     "wires": [
       [
-        "tesla_save_session"
+        "da4587e06d759e91"
       ]
-    ],
-    "func": "// ALL start rules live here. Change thresholds here, not in Python.\nconst BATTERY_ONLY_SOC = 50;   // strictly above\nconst SOLAR_MIN_SOC = 20;      // at least\nconst SOLAR_WATTS = 1600;      // strictly above\nconst MAX_CACHE_AGE_SECONDS = 15 * 60;\nconst input = msg.payload;\nconst charge = input.charge || {};\nconst now = Date.now() / 1000;\nfunction wait(reason) {\n    node.status({fill: \"grey\", shape: \"ring\", text: reason});\n    return null;\n}\nconst state = input.session === null ? {handled: false} : input.session;\nif (!state || typeof state.handled !== \"boolean\") {\n    node.error(\"Invalid saved session state; no start sent\", msg);\n    return null;\n}\nconst times = [Number(input.cacheMtime)];\nif (charge.timestamp !== null && charge.timestamp !== undefined) times.push(Number(charge.timestamp)/1000);\nif (input.cacheMtime == null || times.some(t => !Number.isFinite(t) || now-t < 0 || now-t > MAX_CACHE_AGE_SECONDS)) return wait(\"Waiting for fresh Tesla cache\");\nlet next = state;\nmsg.startRequested = false;\nif (charge.charging_state === \"Disconnected\") {\n    next = {handled: false};\n    node.status({fill: \"grey\", shape: \"ring\", text: \"Unplugged: rearmed\"});\n} else if ([\"Charging\", \"Complete\"].includes(charge.charging_state)) {\n    next = {handled: true};\n    node.status({fill: \"green\", shape: \"dot\", text: charge.charging_state});\n} else {\n    if (state.handled) return wait(\"Already handled this plug-in session\");\n    if (charge.charging_state !== \"Stopped\" || charge.charge_port_latch !== \"Engaged\") return wait(\"Car not ready / not plugged in\");\n    const p = flow.get(\"teslaEnergy\") || {};\n    if (p.BatterySOC == null || p.PVPower == null || p.BatterySOC === \"\" || p.PVPower === \"\") return wait(\"Missing house readings\");\n    const soc = Number(p.BatterySOC), solar = Number(p.PVPower);\n    if (!Number.isFinite(soc) || soc < 0 || soc > 100 || !Number.isFinite(solar) || solar < 0) return wait(\"Invalid house readings\");\n    if (!(soc > BATTERY_ONLY_SOC || (soc >= SOLAR_MIN_SOC && solar > SOLAR_WATTS))) return wait(\"Waiting for battery or solar\");\n    next = {handled: true, attempted_at: now};\n    msg.startRequested = true;\n    node.status({fill: \"yellow\", shape: \"dot\", text: \"Saving attempt before start\"});\n}\nif (JSON.stringify(next) === JSON.stringify(state)) return null;\nmsg.payload = JSON.stringify(next);\nmsg.expectedState = msg.payload;\nreturn msg;",
+    ]
+  },
+  {
+    "id": "da4587e06d759e91",
+    "type": "function",
+    "z": "262a0e697e4f1c1a",
+    "name": "Start rules: >50% OR >=20% + >700W",
+    "func": "// ALL start rules live here. Change thresholds here, not in Python.\n// Plug state comes from Victron EV charger /Status, not the Tesla cache, so a\n// sleeping car does not block a start. The start command wakes the car.\n// Starts as often as needed while plugged in (solar goes up and down), with a\n// pause between attempts so wakes/commands stay cheap. \"Rearm/pause after\n// failed start\" lengthens the pause when a start fails.\nconst BATTERY_ONLY_SOC = 50;   // strictly above\nconst SOLAR_MIN_SOC = 20;      // at least\nconst SOLAR_WATTS = 700;      // strictly above\nconst ATTEMPT_PAUSE_SECONDS = 30 * 60;\nconst MIN_CHARGE_LIMIT = 80;    // the start command raises a lower limit to this\nconst STATUS_NAMES = {0: \"Disconnected\", 1: \"Connected\", 2: \"Charging\", 3: \"Charged\"};\nconst now = Date.now() / 1000;\nfunction wait(reason) {\n    node.status({fill: \"grey\", shape: \"ring\", text: reason});\n    return null;\n}\nconst input = msg.payload || {};\nconst state = input.session === null || input.session === undefined ? {} : input.session;\nif (!state || typeof state !== \"object\" || Array.isArray(state)) {\n    node.error(\"Invalid saved session state; no start sent\", msg);\n    return null;\n}\nconst p = flow.get(\"teslaEnergy\") || {};\nif (p.EVChargerStatus == null || p.EVChargerStatus === \"\") return wait(\"Missing charger status\");\nconst status = Number(p.EVChargerStatus);\nmsg.startRequested = false;\nif (status === 0) {\n    // Unplugged: drop any pause so a new plug-in can start right away.\n    if (JSON.stringify(state) === \"{}\") return wait(\"Unplugged\");\n    node.status({fill: \"grey\", shape: \"ring\", text: \"Unplugged: pause cleared\"});\n    msg.payload = \"{}\";\n    msg.expectedState = msg.payload;\n    return msg;\n}\n// A car that is full at a limit below 80% still gets a start: the command raises the limit.\nconst limitTooLow = Number.isFinite(input.charge_limit) && input.charge_limit < MIN_CHARGE_LIMIT;\nif (status === 2 || (status === 3 && !limitTooLow)) {\n    node.status({fill: \"green\", shape: \"dot\", text: STATUS_NAMES[status]});\n    return null;\n}\nif (status !== 1 && status !== 3) return wait(\"Charger status \" + status + \"; not starting\");\nif (typeof state.retry_after === \"number\" && now < state.retry_after) {\n    return wait((state.reason || \"Paused\") + \"; next try \" + new Date(state.retry_after * 1000).toLocaleTimeString());\n}\nif (p.BatterySOC == null || p.PVPower == null || p.BatterySOC === \"\" || p.PVPower === \"\") return wait(\"Missing house readings\");\nconst soc = Number(p.BatterySOC), solar = Number(p.PVPower);\nif (!Number.isFinite(soc) || soc < 0 || soc > 100 || !Number.isFinite(solar) || solar < 0) return wait(\"Invalid house readings\");\nif (!(soc > BATTERY_ONLY_SOC || (soc >= SOLAR_MIN_SOC && solar > SOLAR_WATTS))) return wait(\"Waiting for battery or solar\");\nmsg.payload = JSON.stringify({attempted_at: now, retry_after: now + ATTEMPT_PAUSE_SECONDS, reason: \"Started recently\"});\nmsg.expectedState = msg.payload;\nmsg.startRequested = true;\nnode.status({fill: \"yellow\", shape: \"dot\", text: \"Saving attempt before start\"});\nreturn msg;",
     "outputs": 1,
+    "timeout": "",
     "noerr": 0,
     "initialize": "",
     "finalize": "",
-    "libs": []
-  },
-  {
-    "id": "tesla_save_session",
-    "type": "file",
-    "z": "2ea0df98a5ef77d5",
-    "name": "Save plug-in session BEFORE command",
-    "x": 310,
-    "y": 500,
+    "libs": [],
+    "x": 770,
+    "y": 360,
     "wires": [
       [
-        "tesla_verify_saved"
+        "ac218b7fbb0db436"
       ]
-    ],
+    ]
+  },
+  {
+    "id": "ac218b7fbb0db436",
+    "type": "file",
+    "z": "262a0e697e4f1c1a",
+    "name": "Save attempt BEFORE command",
     "filename": "/data/tesla/auto-start-state.json",
     "filenameType": "str",
     "appendNewline": false,
     "createDir": false,
     "overwriteFile": "true",
-    "encoding": "utf8"
-  },
-  {
-    "id": "tesla_start_requested",
-    "type": "switch",
-    "z": "2ea0df98a5ef77d5",
-    "name": "Start requested?",
-    "x": 650,
-    "y": 500,
+    "encoding": "utf8",
+    "x": 980,
+    "y": 460,
     "wires": [
       [
-        "4ea1974c78fc0266"
+        "cdbe52c5422b940b"
       ]
-    ],
+    ]
+  },
+  {
+    "id": "76946c646c79116f",
+    "type": "switch",
+    "z": "262a0e697e4f1c1a",
+    "name": "Start requested?",
     "property": "startRequested",
     "propertyType": "msg",
     "rules": [
@@ -355,33 +352,43 @@
     ],
     "checkall": "true",
     "repair": false,
-    "outputs": 1
+    "outputs": 1,
+    "x": 1330,
+    "y": 180,
+    "wires": [
+      [
+        "07fc9f3bb30234fa"
+      ]
+    ]
   },
   {
-    "id": "tesla_catch_error",
+    "id": "08d9b4b9caa1e766",
     "type": "catch",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "name": "File/JSON errors: no start",
-    "x": 260,
+    "scope": [
+      "ac218b7fbb0db436",
+      "afa3a2566ab34b88",
+      "da4587e06d759e91",
+      "cdbe52c5422b940b",
+      "0bc33f4aaacfcf6d",
+      "5e1a7c0d2b9f4a01",
+      "5e1a7c0d2b9f4a02",
+      "5e1a7c0d2b9f4a03"
+    ],
+    "uncaught": false,
+    "x": 1790,
     "y": 600,
     "wires": [
       [
-        "b742223f1a4789de"
+        "170d2b84ba503aac"
       ]
-    ],
-    "scope": [
-      "tesla_save_session",
-      "tesla_parse_cache",
-      "tesla_start_policy",
-      "tesla_verify_saved",
-      "tesla_verify_state"
-    ],
-    "uncaught": false
+    ]
   },
   {
-    "id": "tesla_verify_saved",
+    "id": "cdbe52c5422b940b",
     "type": "file in",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "name": "Read back saved session",
     "filename": "/data/tesla/auto-start-state.json",
     "filenameType": "str",
@@ -390,18 +397,18 @@
     "sendError": false,
     "encoding": "utf8",
     "allProps": true,
-    "x": 330,
-    "y": 560,
+    "x": 1350,
+    "y": 460,
     "wires": [
       [
-        "tesla_verify_state"
+        "0bc33f4aaacfcf6d"
       ]
     ]
   },
   {
-    "id": "tesla_verify_state",
+    "id": "0bc33f4aaacfcf6d",
     "type": "function",
-    "z": "2ea0df98a5ef77d5",
+    "z": "262a0e697e4f1c1a",
     "name": "Require matching saved state",
     "func": "if (msg.payload !== msg.expectedState) { node.error(\"Session save verification failed; no start sent\", msg); return null; }\nreturn msg;",
     "outputs": 1,
@@ -409,12 +416,69 @@
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 650,
-    "y": 560,
+    "x": 1170,
+    "y": 340,
     "wires": [
       [
-        "tesla_start_requested"
+        "76946c646c79116f"
       ]
+    ]
+  },
+  {
+    "id": "5e1a7c0d2b9f4a01",
+    "type": "function",
+    "z": "262a0e697e4f1c1a",
+    "name": "Rearm/pause after failed start",
+    "func": "// Runs on any stderr from the start command, i.e. a failed start.\n// Car said \"disconnected\" (Victron status was stale): try again in 30 min.\n// Car still asleep after the helper's 2-minute wake wait: also 30 min.\n// Car too slow to answer (command timed out): try again in 10 min.\n// Car said it is full (driver has not reported Charged yet): 10 min.\n// Any other failure (token, quota, ...): 30 min, the same as between normal attempts.\n// Output 1 saves the pause; output 2 appends the error to auto-start-errors.log.\nconst UNPLUGGED_PAUSE_SECONDS = 30 * 60;\nconst TIMEOUT_PAUSE_SECONDS = 10 * 60;\nconst OTHER_FAILURE_PAUSE_SECONDS = 30 * 60;\nconst err = String(msg.payload || \"\").trim();\nif (!err) return null;\nconst unplugged = /could not execute command: disconnected/i.test(err);\nconst asleep = /offline or asleep/i.test(err);\nconst timedOut = /timed out|deadline exceeded/i.test(err);\nconst full = /could not execute command: complete/i.test(err);\nconst now = Date.now() / 1000;\nconst pause = unplugged || asleep ? UNPLUGGED_PAUSE_SECONDS : timedOut || full ? TIMEOUT_PAUSE_SECONDS : OTHER_FAILURE_PAUSE_SECONDS;\nconst retryAfter = now + pause;\nconst reason = unplugged ? \"Car said unplugged\" : asleep ? \"Car did not wake\" : timedOut ? \"Car timed out\" : full ? \"Car is full\" : \"Start failed\";\nmsg.payload = JSON.stringify({attempted_at: now, retry_after: retryAfter, reason: reason});\nnode.status({fill: \"yellow\", shape: \"ring\", text: reason + \"; next try \" + new Date(retryAfter * 1000).toLocaleTimeString()});\nconst logLine = {payload: new Date(now * 1000).toISOString() + \" \" + reason + \": \" + err.replace(/\\s+/g, \" \").slice(0, 1000)};\nreturn [msg, logLine];\n",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 1550,
+    "y": 360,
+    "wires": [
+      [
+        "5e1a7c0d2b9f4a02"
+      ],
+      [
+        "5e1a7c0d2b9f4a03"
+      ]
+    ]
+  },
+  {
+    "id": "5e1a7c0d2b9f4a02",
+    "type": "file",
+    "z": "262a0e697e4f1c1a",
+    "name": "Save pause",
+    "filename": "/data/tesla/auto-start-state.json",
+    "filenameType": "str",
+    "appendNewline": false,
+    "createDir": false,
+    "overwriteFile": "true",
+    "encoding": "utf8",
+    "x": 1790,
+    "y": 360,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "5e1a7c0d2b9f4a03",
+    "type": "file",
+    "z": "262a0e697e4f1c1a",
+    "name": "Log start error",
+    "filename": "/data/tesla/auto-start-errors.log",
+    "filenameType": "str",
+    "appendNewline": true,
+    "createDir": false,
+    "overwriteFile": "false",
+    "encoding": "utf8",
+    "x": 1790,
+    "y": 410,
+    "wires": [
+      []
     ]
   }
 ]

@@ -1,69 +1,44 @@
 # Tesla plug-in auto-start
 
-Replace the existing **Car Charging** tab with `car-charging-auto-start.json`.
-The replacement tab is named **Tesla Auto-Start Charging**.
-Keep the existing Pushbullet configuration (`7c3e0c966c39354b`). Do not run the
-old and replacement start flows together. The other tabs are unchanged.
+`car-charging-auto-start.json` is the **Tesla Auto-Start Charging** tab (`262a0e697e4f1c1a`), exported
+from the Victron Pi's `/data/home/nodered/.node-red/flows.json` on 2026-11-11. The Pi is the source
+of truth. When the flow is changed there, export the tab again so this copy stays current.
 
-The Pi needs both `node-red-tesla.py` and the updated
-`change-tesla-charging-rate.py` in `/data/tesla/`. Run them as `nodered`, which
-must have access to the shared Tesla credentials and write access to that folder.
+The full rules, failure pauses and history are in
+[docs/11-plug-detection-and-auto-start.md](../docs/11-plug-detection-and-auto-start.md). In short:
 
-## Start conditions
+- Plug state comes from the Victron EV charger `/Status` (written by the driver), not the Tesla cache.
+- Start at 5 A when battery is above 50%, or at least 20% with solar above 700 W.
+- Checks at most every 5 minutes. After a start, waits 30 minutes before trying again.
+- A failed start waits 10 or 30 minutes depending on the error, and logs it to
+  `/data/tesla/auto-start-errors.log`.
+- Unplugging (status 0) clears any pause.
 
-- House SOC **above 50%**, regardless of solar; OR
-- House SOC **at least 20%** and solar **above 1,600 W**.
-- Existing cached Tesla data must say `Stopped` with an `Engaged` charge-port latch.
-- Cache file and Tesla charge-state timestamp, when supplied, must be no more
-  than 15 minutes old.
-- Set 5 A successfully before sending the charging-start command.
+The tab uses the existing Pushbullet configuration (`7c3e0c966c39354b`), which is not in this file.
+The older **Car Charging** tab (`2ea0df98a5ef77d5`) is still on the Pi but disabled. Do not run both.
 
-## API use and session handling
+The start command runs `python /data/tesla/node-red-tesla.py start`, which needs that helper and
+`change-tesla-charging-rate.py` in `/data/tesla/`.
 
-Local sensor messages can cause a local check at most every 5 minutes. These
-checks read `/tmp/<VehicleId>.json`, written by the existing driver, and make
-no Tesla data requests. Existing driver polling is unchanged. The start attempt
-sends set-amps and start, with at most one authentication retry per operation.
-There are no automatic wake requests or failure retry loops.
+## Hourly wake
 
-`/data/tesla/auto-start-state.json` records an attempt before commands run.
-An observed `Charging` or `Complete` also marks the session handled. This avoids
-restarting a completed charge or a charge manually stopped after it was observed
-running. A fresh observed `Disconnected` state rearms auto-start. If unplugging
-and reconnecting both happen between driver polls, that session change can be
-missed; the flow conservatively does not issue another start. A manual stop
-made before any charging/attempt is observed cannot be identified as manual.
+`hourly-wake.json` is the **Tesla Hourly Wake** tab (`tesla_wake_tab`). Between 8 AM and 5 PM Central,
+it wakes the car at most once an hour. It wakes only when all of these are true:
 
-The driver may take several minutes (or longer under its backoff rules) to
-notice plugging in. Changing local input delivery does not increase driver
-polling. Starting charging can still change the driver's existing polling cadence
-from idle to charging. This feature does not guarantee a particular monthly bill.
+- The battery/solar start rules pass. They use the same constants as the start rules, and a test checks that.
+- The car is home.
+- The charger status is 0 or 2.
+- The inverter, which powers only the car, is under 300 W.
 
-On failure, the script returns nonzero and the flow routes the error to Debug.
-It does not try again in that session. Only successful command output triggers
-the existing Pushbullet success node. No-op checks are silent.
+It runs `python /data/tesla/node-red-tesla.py wake`. Failures are appended to
+`/data/tesla/auto-start-errors.log`. Test: `node tests/test_node_red_wake.cjs`.
 
-All start policy is in the **Start rules: >50% OR >=20% + >1600 W** function.
-The Python helper only reads local files or executes set-5-A then start. The
-flow saves session state using a File node and verifies it by reading it back
-before dispatching a start. Invalid or unreadable session state blocks starts.
-The former `auto-start-tesla-charging.py` is retained for compatibility with the
-previous flow during migration; this replacement never calls it.
+## Deploying a change
 
-## Import
+Back up `flows.json` first. Deploy through the Node-RED admin API (`POST http://127.0.0.1:1880/flows`
+with `Node-RED-Deployment-Type: nodes`) or the editor. If an editor tab is open during an API deploy,
+reload it instead of clicking Deploy.
 
-1. Disable the existing Car Charging / Tesla Auto-Start Charging start tab.
-2. Import `car-charging-auto-start.json` using Menu > Import > select a file.
-3. Replace matching existing nodes if offered; otherwise import as a new flow
-   and keep the older start tab disabled. Do not enable both.
-4. Confirm the Pushbullet node uses your existing account, then Deploy.
-5. Keep Change Charging Level and Low Battery Inverter enabled as before.
+Read-only helper check: `python /data/tesla/node-red-tesla.py read`
 
-The helper has been installed on the Pi. Importing and deploying the enabled
-replacement activates automatic charging under the rules above.
-
-Read-only helper check (no API requests or state changes):
-`python /data/tesla/node-red-tesla.py read`
-
-Tests: `python -m unittest discover -s tests -v` and
-`node tests/test_node_red_flow.cjs`.
+Test: `node tests/test_node_red_flow.cjs`

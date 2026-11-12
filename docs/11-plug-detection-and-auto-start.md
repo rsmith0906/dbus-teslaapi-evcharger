@@ -37,6 +37,16 @@ If the start command fails, **Rearm/pause after failed start** (`5e1a7c0d2b9f4a0
 
 Not covered: a plug-in made after that one wake, once the car has fallen asleep again, is still missed until something wakes the car. The Bluetooth plan below is the full fix. Tests: `tests/test_driver_sleep.py` `UnplugAndHomeWakeTests`. Backup on the Pi: `dbus-teslaapi-evcharger.py.pre-homewake-20261111-215230`.
 
+**Hourly daytime wake (Node-RED, since 2026-11-12):** the driver's single wake after arriving home misses a plug-in made after the car falls asleep again. It also misses a status that is stuck on `2` while nothing charges. A separate tab, **Tesla Hourly Wake** (`node-red/hourly-wake.json`), checks every 5 minutes and wakes the car only when all of these are true:
+- It is 8:00–16:59 Central. The user chose this window.
+- The battery/solar start rules pass.
+- The car is within `radius_m` of home, using the driver's last location.
+- The Victron status is `0` or `2`. At `1` the start command wakes the car itself. At `3` the car is full.
+- The inverter output (`com.victronenergy.inverter/41 /Ac/Out/L1/P`) is under 300 W. The user confirmed that this inverter powers only the car.
+- No wake was sent in the last 60 minutes. This is kept in node memory, so a Node-RED restart can allow one early wake.
+
+It runs `node-red-tesla.py wake`, which sends `wake` under the same lock as `start`. An "offline or asleep" reply counts as sent. The driver's next poll (5 min or less) then reads the real plug state, and this tab starts charging if the car is plugged in. Failures go to `auto-start-errors.log` as "Hourly wake failed". Worst case: 9 wakes a day, about 18 cents. Not verified live yet: that a wake is followed by "Car Awake" in the driver log and then a start.
+
 The saved file looks like `{"attempted_at": <unix time>, "retry_after": <unix time>, "reason": "Started recently" | "Car said unplugged" | "Car did not wake" | "Car timed out" | "Car is full" | "Start failed"}`. The rule node's status text shows the reason and the next try time.
 
 Each failed start also adds a line with the time, reason and error text to `/data/tesla/auto-start-errors.log`, so the cause can be read later. The file is created on the first failure and is not rotated. Backup from this change: `flows.json.pre-timeout-retry-*`.
