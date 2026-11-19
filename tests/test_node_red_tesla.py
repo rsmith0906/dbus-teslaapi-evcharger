@@ -9,6 +9,7 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 ASLEEP = RuntimeError('vehicle unavailable: vehicle is offline or asleep')
+TIMEOUT = RuntimeError('Error: context deadline exceeded')
 
 
 class FakeClock:
@@ -70,6 +71,44 @@ class StartTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.start(controller)
         self.assertNotIn(call(['charging-start']), controller.execute.call_args_list)
+
+    def test_timeout_setting_amps_is_retried(self):
+        controller = Mock()
+        controller.run.side_effect = [TIMEOUT, TIMEOUT, None]
+        self.start(controller)
+        self.assertEqual(controller.run.call_count, 3)
+        self.assertEqual(controller.execute.call_args_list[-1], call(['charging-start']))
+
+    def test_timeout_on_start_charging_is_retried(self):
+        # 2026-11-19: charging-start hit tesla-control's 10 s limit and the whole start failed.
+        controller = Mock()
+        controller.execute.side_effect = [None, TIMEOUT, None]
+        self.start(controller)
+        self.assertEqual(controller.execute.call_args_list,
+                         [call(['wake']), call(['charging-start']), call(['charging-start'])])
+
+    def test_already_charging_after_a_timed_out_start_counts_as_started(self):
+        controller = Mock()
+        controller.execute.side_effect = [None, TIMEOUT, RuntimeError(
+            'Failed to execute command: car could not execute command: is_charging')]
+        self.start(controller)  # no exception
+
+    def test_already_charging_without_a_timeout_still_fails(self):
+        controller = Mock()
+        controller.execute.side_effect = [None, RuntimeError(
+            'Failed to execute command: car could not execute command: is_charging')]
+        with self.assertRaises(RuntimeError):
+            self.start(controller)
+
+    def test_timeouts_give_up_after_wake_wait(self):
+        controller = Mock()
+        controller.execute.side_effect = lambda op: (_ for _ in ()).throw(TIMEOUT) \
+            if op == ['charging-start'] else None
+        clock = FakeClock()
+        with self.assertRaises(RuntimeError):
+            module.start(controller, sleep=clock.sleep, clock=clock)
+        self.assertGreaterEqual(clock.now, module.WAKE_WAIT_SECONDS)
+        self.assertLess(clock.now, module.WAKE_WAIT_SECONDS + module.RETRY_INTERVAL_SECONDS + 1)
 
     def test_low_charge_limit_raised_to_80_before_start(self):
         for limit, expected in [(60, True), (80, False), (90, False), (None, False)]:
