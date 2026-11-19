@@ -72,4 +72,13 @@ for (const [err, minutes, reason] of [
     assert.match(log.payload, new RegExp(reason));
 }
 assert.equal(fail({payload: '  '}, {status() {}}), null);
+// The next-try time shows in Central time, not the Pi's UTC clock.
+{
+    let shown = '';
+    const [pause] = fail({payload: 'context deadline exceeded'}, {status: s => { shown = s.text; }});
+    const retry = new Date(JSON.parse(pause.payload).retry_after * 1000);
+    assert.equal(shown, 'Car timed out; next try ' +
+                 retry.toLocaleTimeString('en-US', {timeZone: 'America/Chicago'}));
+    assert.doesNotMatch(failed.func + rules.func, /toLocaleTimeString\(\)/);
+}
 console.log('Node-RED auto-start rules, failed-start pauses, wiring and 5-minute limiter checks passed');

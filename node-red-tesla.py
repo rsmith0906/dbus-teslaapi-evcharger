@@ -44,8 +44,19 @@ RETRY_INTERVAL_SECONDS = 10
 REWAKE_AFTER_SECONDS = 45
 
 
+# tesla-control gives up after 10 s (vehicle-command/cmd/tesla-control/main.go:153)
+# with "context deadline exceeded". A just-woken car often answers that slowly.
+TIMEOUT_ERROR = 'deadline exceeded'
+ALREADY_CHARGING_ERROR = 'could not execute command: is_charging'
+
+
 def is_asleep_error(error):
     return ASLEEP_ERROR in str(error).lower()
+
+
+def is_retryable(error):
+    text = str(error).lower()
+    return ASLEEP_ERROR in text or TIMEOUT_ERROR in text
 
 
 def wake(controller):
@@ -61,26 +72,43 @@ def wake(controller):
 
 def start(controller, charge_limit=None, sleep=time.sleep, clock=time.monotonic):
     # Wake first: the car is usually asleep when Victron status alone triggers a start.
-    # Then retry the first real command until the car is online, re-sending the wake
-    # once, so a slow wake-up does not fail the whole start.
+    # Then send each command, retrying while the car is asleep or too slow to answer,
+    # all within one WAKE_WAIT_SECONDS window. The wake is re-sent once.
     wake(controller)
     began = clock()
-    rewoken = False
-    while True:
-        try:
-            controller.run(5)
-            break
-        except RuntimeError as error:
-            elapsed = clock() - began
-            if not is_asleep_error(error) or elapsed >= WAKE_WAIT_SECONDS:
-                raise
-            if not rewoken and elapsed >= REWAKE_AFTER_SECONDS:
-                wake(controller)
-                rewoken = True
-            sleep(RETRY_INTERVAL_SECONDS)
+    state = {'rewoken': False}
+
+    def attempt(send):
+        while True:
+            try:
+                return send()
+            except RuntimeError as error:
+                elapsed = clock() - began
+                if not is_retryable(error) or elapsed >= WAKE_WAIT_SECONDS:
+                    raise
+                if not state['rewoken'] and elapsed >= REWAKE_AFTER_SECONDS:
+                    wake(controller)
+                    state['rewoken'] = True
+                sleep(RETRY_INTERVAL_SECONDS)
+
+    attempt(lambda: controller.run(5))
     if charge_limit is not None and charge_limit < MIN_CHARGE_LIMIT:
-        controller.execute(['charging-set-limit', str(MIN_CHARGE_LIMIT)])
-    controller.execute(['charging-start'])
+        attempt(lambda: controller.execute(['charging-set-limit', str(MIN_CHARGE_LIMIT)]))
+    timed_out = []
+
+    def send_start():
+        try:
+            controller.execute(['charging-start'])
+        except RuntimeError as error:
+            # A start that timed out may still have reached the car. If the retry
+            # then says "already charging", the start worked.
+            if timed_out and ALREADY_CHARGING_ERROR in str(error).lower():
+                return
+            if TIMEOUT_ERROR in str(error).lower():
+                timed_out.append(True)
+            raise
+
+    attempt(send_start)
 
 
 def main(argv=None):
